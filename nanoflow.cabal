@@ -27,7 +27,7 @@ library
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends:    base ^>=4.16.4.0,
+    build-depends:    base >=4.16.4.0,
                       matrix >= 0.3.6.1,
                       random >= 1.2.1.1
     hs-source-dirs:   src
@@ -42,7 +42,7 @@ executable nanoflow
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:
-        base ^>=4.16.4.0,
+        base >=4.16.4.0,
         nanoflow
 
     hs-source-dirs:   src-exe
@@ -53,4 +53,4 @@ test-suite nanoflow-test
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
     main-is:          MyLibTest.hs
-    build-depends:    base ^>=4.16.4.0
+    build-depends:    base >=4.16.4.0
