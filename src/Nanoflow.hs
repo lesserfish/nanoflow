@@ -233,6 +233,38 @@ updateWeights rate (HiddenLayer _nodes _weights _biases _ntail) = _result where
 
 updateWeights rate (ActivationLayer _nodes _actv _ntail) = ActivationLayer _nodes _actv (updateWeights rate _ntail)
 
+
+printNetwork :: Network -> IO ()
+printNetwork (InputLayer nodes) = do
+    putStrLn $ "Input Layer"
+    putStrLn $ "Nodes"
+    putStrLn $ show (justValue nodes) 
+    putStrLn $ show (justGrad nodes)
+    putStrLn $ ""
+
+printNetwork (HiddenLayer nodes weights bias tail) = do
+    printNetwork tail
+    putStrLn $ "Hidden Network"
+    putStrLn $ "\nWeights"
+    putStrLn $ show (justValue weights) 
+    putStrLn $ show (justGrad weights)
+    putStrLn $ "\nBias"
+    putStrLn $ show (justValue bias) 
+    putStrLn $ show (justGrad bias)
+    putStrLn $ "Nodes"
+    putStrLn $ show (justValue nodes) 
+    putStrLn $ show (justGrad nodes)
+
+printNetwork (ActivationLayer nodes activator tail) = do
+    printNetwork tail
+    putStrLn $ "Activation function"
+    putStrLn $ "Function: " ++ (show . name $ activator)
+    putStrLn $ "Nodes"
+    putStrLn $ show (justValue nodes) 
+    putStrLn $ show (justGrad nodes)
+
+
+
 -- Loop:
 -- zerograd()
 -- For t in Training Data:

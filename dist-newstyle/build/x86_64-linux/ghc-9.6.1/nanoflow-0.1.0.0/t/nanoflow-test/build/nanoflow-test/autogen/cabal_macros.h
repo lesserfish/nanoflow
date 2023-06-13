@@ -30,6 +30,16 @@
   (major1) == 2 && (major2) <  11 || \
   (major1) == 2 && (major2) == 11 && (minor) <= 1)
 #endif /* MIN_VERSION_hspec */
+/* package matrix-0.3.6.1 */
+#ifndef VERSION_matrix
+#define VERSION_matrix "0.3.6.1"
+#endif /* VERSION_matrix */
+#ifndef MIN_VERSION_matrix
+#define MIN_VERSION_matrix(major1,major2,minor) (\
+  (major1) <  0 || \
+  (major1) == 0 && (major2) <  3 || \
+  (major1) == 0 && (major2) == 3 && (minor) <= 6)
+#endif /* MIN_VERSION_matrix */
 /* package nanoflow-0.1.0.0 */
 #ifndef VERSION_nanoflow
 #define VERSION_nanoflow "0.1.0.0"
@@ -40,16 +50,6 @@
   (major1) == 0 && (major2) <  1 || \
   (major1) == 0 && (major2) == 1 && (minor) <= 0)
 #endif /* MIN_VERSION_nanoflow */
-/* package random-1.2.1.1 */
-#ifndef VERSION_random
-#define VERSION_random "1.2.1.1"
-#endif /* VERSION_random */
-#ifndef MIN_VERSION_random
-#define MIN_VERSION_random(major1,major2,minor) (\
-  (major1) <  1 || \
-  (major1) == 1 && (major2) <  2 || \
-  (major1) == 1 && (major2) == 2 && (minor) <= 1)
-#endif /* MIN_VERSION_random */
 
 /* tool gcc-11 */
 #ifndef TOOL_VERSION_gcc
