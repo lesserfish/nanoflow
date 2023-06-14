@@ -1,8 +1,8 @@
 module Nanoflow where
 import Prelude hiding ((<*>))
 import Control.Monad (replicateM)
+import System.Random (randomRIO)
 import Data.Matrix
-import System.Random
 
 data Error = Error {efunc :: [Double] -> [Double] -> Double, egrad :: Matrix Double -> Matrix Double -> Matrix Double}
 data Activator = Activator {afunc :: Double -> Double, agrad :: Double -> Double, aname :: String}
@@ -162,10 +162,6 @@ addValue original diff = output where
 -- grad(b) = grad(y)
 -- grad(x) = t(W) * grad(y)
 --
--- xbackpropagate receives as input grad(y) and the network. 
--- It then calculates grad(w), grad(b).
--- Then, it recurisvely calculates grad(x) backpropagating through the network.
---
 -- For more information: https://mlvu.github.io/
 
 xbackpropagate :: Matrix Double -> Network -> Network
@@ -255,20 +251,21 @@ instance Show Network where
 --      network = feedforward network t
 --      network = backpropagate network
 -- network = updateWeights network rate
+
+-- Activator and Error functions
 --
---
--- TODO: Rename every variable used in every function. The code, as it stands now, is unreadable.
---
---
+-- tanh
 dtanh :: Floating a => a -> a
 dtanh x = (1/(cosh x))**2
 
 htan :: Activator 
 htan = Activator Prelude.tanh dtanh "tanh"
 
+-- Identity 
 idd :: Activator
 idd = Activator id (\x -> 1) "id"
 
+-- Mean squared Error
 fmse :: [Double] -> [Double] -> Double
 fmse xs ys
   | length xs /= length ys = error "Input lists must have the same length"
