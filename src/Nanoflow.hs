@@ -38,9 +38,9 @@ size m = (nrows m, ncols m)
 
 (<*>) :: Floating a => Matrix a -> Matrix a -> Matrix a
 (<*>) mat1 mat2 
-    | size mat1 == size mat2 = _result
+    | size mat1 == size mat2 = output
     | otherwise = error "Dimension mismatch" where
-    _result = matrix (nrows mat1) (ncols mat2) (\(i,j) -> ((mat1 ! (i,j)) * (mat2 ! (i, j))))
+    output = matrix (nrows mat1) (ncols mat2) (\(i,j) -> ((mat1 ! (i,j)) * (mat2 ! (i, j))))
 
 -- (Double, Double) <-> Parameter conversion
 parameter :: (Double, Double) -> Parameter
