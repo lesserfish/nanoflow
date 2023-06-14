@@ -1,26 +1,265 @@
 module Nanoflow where
+import Prelude hiding ((<*>))
 import Control.Monad (replicateM)
 import Data.Matrix
 import System.Random
 
 data Error = Error {efunc :: [Double] -> [Double] -> Double, egrad :: Matrix Double -> Matrix Double -> Matrix Double}
-data Activator = Activator {function :: Double -> Double, derivative :: Double -> Double, name :: String}
-data Parameter = Parameter {value :: Double, grad :: Double} deriving Show
-data Network = InputLayer  {nodes :: Matrix Parameter} |
-               HiddenLayer {nodes :: Matrix Parameter, weights :: Matrix Parameter, biases :: Matrix Parameter, ntail :: Network} |
-               ActivationLayer {nodes :: Matrix Parameter, activator :: Activator, ntail :: Network} deriving Show
+data Activator = Activator {afunc :: Double -> Double, agrad :: Double -> Double, aname :: String}
+data Parameter = Parameter {pvalue :: Double, pgrad :: Double} deriving Show
+data Network = InputLayer  {lnodes :: Matrix Parameter} |
+               HiddenLayer {lnodes :: Matrix Parameter, lweights :: Matrix Parameter, lbiases :: Matrix Parameter, ltail :: Network} |
+               ActivationLayer {lnodes :: Matrix Parameter, lactivator :: Activator, ltail :: Network}
 
 instance Show Activator where
     show (Activator _ _ name) = show name
 
+-- Generate n random values between (low, max)
 runif :: Int -> (Double, Double) -> IO [Double]
 runif n (l, h) = do
   randomValues <- replicateM n (randomRIO (l, h) :: IO Double)
   return randomValues
 
+-- Generates a random matrix of size (i, j) with values between (0, 1)
+randM :: Int -> Int -> IO (Matrix Double)
+randM rows cols = do
+    values <- runif (rows*cols) (0, 1.0)
+    let output = fromList rows cols values
+    return output
+
+-- Generates a matrix of size (i,j) with values equal to 0
+zeroM :: Int -> Int -> Matrix Double
+zeroM rows cols = fromList rows cols (replicate (rows*cols) 0)
+
+-- Size of a matrix
+size :: Matrix a -> (Int, Int)
+size m = (nrows m, ncols m)
+
+
+(<*>) :: Floating a => Matrix a -> Matrix a -> Matrix a
+(<*>) mat1 mat2 
+    | size mat1 == size mat2 = _result
+    | otherwise = error "Dimension mismatch" where
+    _result = matrix (nrows mat1) (ncols mat2) (\(i,j) -> ((mat1 ! (i,j)) * (mat2 ! (i, j))))
+
+-- (Double, Double) <-> Parameter conversion
 parameter :: (Double, Double) -> Parameter
 parameter (val, grad) = Parameter val grad
 
+justValue :: Matrix Parameter -> Matrix Double
+justValue = fmap pvalue
+
+justGrad  :: Matrix Parameter -> Matrix Double
+justGrad = fmap pgrad
+
+zipM :: Matrix a -> Matrix b -> Matrix (a, b)
+zipM m n
+    | size m == size n = mzipn
+    | otherwise = error "Dimension mismatch" where
+    (rows, cols) = size m
+    fm = toList m
+    fn = toList n
+    fmzipfn = zip fm fn
+    mzipn = fromList rows cols fmzipfn
+
+
+zipParam :: Matrix Double -> Matrix Double -> Matrix Parameter
+zipParam values grads = fmap parameter (zipM values grads)
+
+inputLayer :: Int -> IO Network
+inputLayer size = do
+    -- Generate zero nodes
+    let zeros = zeroM size 1
+    let nodes = zipParam zeros zeros
+    return $ (InputLayer nodes)
+
+pushWeightLayer :: Int -> Network -> IO Network
+pushWeightLayer size net = do
+    -- Generate zero nodes
+    let zeros = zeroM size 1
+    let nodes = zipParam zeros zeros
+    
+    -- Generate Random weights
+    let rows = size :: Int
+    let cols = nrows (lnodes net) :: Int
+    weight_values <- randM rows cols
+    let weight_grads = zeroM rows cols
+    let weights = zipParam weight_values weight_grads
+
+    -- Generate Random Biases
+    bias_values <- randM size 1
+    let bias_grads = zeroM size 1
+    let bias = zipParam bias_values bias_grads
+    
+    return $ (HiddenLayer nodes weights bias net)
+
+pushActivationLayer :: Activator -> Network -> IO Network
+pushActivationLayer activator net = do
+    -- Generate zero nodes
+    let rows = nrows (lnodes net) :: Int
+    let zeros = zeroM rows 1
+    let nodes = zipParam zeros zeros
+
+    return $ (ActivationLayer nodes activator net)
+
+pushLayer :: Int -> Activator -> Network -> IO Network
+pushLayer _size _actv _net = pushWeightLayer _size _net >>= pushActivationLayer _actv
+
+pzerograd :: Parameter -> Parameter
+pzerograd (Parameter val _) = Parameter val 0
+
+zerograd :: Network -> Network
+zerograd (InputLayer nodes) = InputLayer (fmap pzerograd nodes)
+zerograd (HiddenLayer nodes weights biases tail) = HiddenLayer (fmap pzerograd nodes) (fmap pzerograd weights) (fmap pzerograd biases) (zerograd tail)
+zerograd (ActivationLayer nodes activator tail) = ActivationLayer (fmap pzerograd nodes) activator (zerograd tail)
+
+feedforward :: [Double] -> Network -> Network
+feedforward input (InputLayer nodes) 
+    | nrows nodes == rows = output
+    | otherwise = error "Dimension mismatch." where
+        rows = length input :: Int;
+        values = fromList rows 1 input
+        grads = justGrad nodes
+        newnodes = zipParam values grads
+        output = InputLayer newnodes
+
+feedforward input (HiddenLayer nodes weights biases tail) = output where
+    newtail = feedforward input tail
+    x = justValue . lnodes $ newtail
+    m = justValue weights 
+    b = justValue biases
+    values = m * x + b
+    grads = justGrad nodes
+    newnodes = zipParam values grads
+    output = HiddenLayer newnodes weights biases newtail
+
+feedforward input (ActivationLayer nodes activator tail) = output where
+    newtail = feedforward input tail
+    x = justValue . lnodes $ newtail
+    values = fmap (afunc activator) x
+    grads = justGrad nodes
+    newnodes = zipParam values grads
+    output = ActivationLayer newnodes activator newtail
+    
+addGrad :: Matrix Parameter -> Matrix Double -> Matrix Parameter
+addGrad original diff = output where
+    values = justValue original
+    grads = justGrad original
+    output = zipParam values (grads + diff)
+
+addValue :: Matrix Parameter -> Matrix Double -> Matrix Parameter
+addValue original diff = output where
+    values = justValue original
+    grads = justGrad original
+    output = zipParam (values + diff) grads
+
+-- A Layer contains a set of nodes y, a set of Weights W and a set of biases b such that
+-- y = W x + b, 
+-- where x is the set of nodes of the previous layer.
+--
+-- Under this notation, we calculate the gradient as follows:
+-- grad(W) = grad(y) * t(x)
+-- grad(b) = grad(y)
+-- grad(x) = t(W) * grad(y)
+--
+-- xbackpropagate receives as input grad(y) and the network. 
+-- It then calculates grad(w), grad(b).
+-- Then, it recurisvely calculates grad(x) backpropagating through the network.
+--
+-- For more information: https://mlvu.github.io/
+
+xbackpropagate :: Matrix Double -> Network -> Network
+xbackpropagate grads (InputLayer nodes) = output where
+    newnodes = addGrad nodes grads
+    output = InputLayer newnodes
+
+xbackpropagate grads (HiddenLayer nodes weights biases tail) = output where
+    newnodes = addGrad nodes grads
+    newbiases = addGrad biases grads
+    
+    x = justValue . lnodes $ tail
+    newweights = addGrad weights (grads * (transpose x))
+
+    delta_x = (transpose (justValue weights)) * grads
+    newtail =  xbackpropagate delta_x tail
+
+    output = HiddenLayer newnodes newweights newbiases newtail
+
+xbackpropagate grads (ActivationLayer nodes activator tail) = output where
+    newnodes = addGrad nodes grads
+    x = justValue . lnodes $ tail
+    dx = fmap (agrad activator) x
+    delta_x = grads <*> dx 
+    newtail = xbackpropagate delta_x tail
+    output = ActivationLayer newnodes activator newtail
+
+backpropagate :: Error -> [Double] -> Network -> Network
+backpropagate err lexpected_value net = xbackpropagate grads net where
+    predicted_value = justValue . lnodes $ net
+    expected_value = fromList (nrows predicted_value) (ncols predicted_value) lexpected_value
+    grads = (egrad err) predicted_value expected_value
+    
+deviation :: Error -> [Double] -> Network -> Double
+deviation err lexpected_value net = deviation where
+    predicted_value = justValue . lnodes $ net
+    lpredicted_value = toList predicted_value
+    deviation = (efunc err) lpredicted_value lexpected_value
+
+updateWeights :: Double -> Network -> Network
+updateWeights rate (InputLayer x) = (InputLayer x)
+updateWeights rate (ActivationLayer _nodes _actv _ntail) = ActivationLayer _nodes _actv (updateWeights rate _ntail)
+updateWeights rate (HiddenLayer nodes weights biases tail) = output where
+    delta_weight = fmap (*rate) (justGrad weights)
+    newweights = addValue weights delta_weight
+    delta_bias = fmap (*rate) (justGrad biases)
+    newbiases = addValue biases delta_bias
+    newtail = updateWeights rate tail
+    output = HiddenLayer nodes newweights newbiases newtail
+
+
+printNetwork :: Network -> String
+printNetwork (InputLayer nodes) = 
+    "Input Layer\n" ++
+    "Nodes\n" ++
+    show (justValue nodes) ++ "\n" ++
+    show (justGrad nodes) ++ "\n\n"
+
+printNetwork (HiddenLayer nodes weights bias tail) = 
+    printNetwork tail ++
+    "Hidden Network\n" ++ 
+    "\nWeights\n" ++
+    show (justValue weights) ++ "\n" ++
+    show (justGrad weights) ++ "\n" ++
+    "\nBias\n" ++
+    show (justValue bias) ++ "\n" ++
+    show (justGrad bias) ++ "\n" ++
+    "Nodes\n" ++
+    show (justValue nodes) ++ "\n" ++
+    show (justGrad nodes) ++ "\n"
+
+printNetwork (ActivationLayer nodes activator tail) =
+    printNetwork tail ++
+    "Activation function\n" ++
+    "Function: " ++ (show . aname $ activator) ++ "\n" ++
+    "Nodes\n" ++
+    show (justValue nodes) ++ "\n" ++
+    show (justGrad nodes) ++ "\n"
+
+
+instance Show Network where
+    show = printNetwork
+
+-- Loop:
+-- zerograd()
+-- For t in Training Data:
+--      network = feedforward network t
+--      network = backpropagate network
+-- network = updateWeights network rate
+--
+--
+-- TODO: Rename every variable used in every function. The code, as it stands now, is unreadable.
+--
+--
 dtanh :: Floating a => a -> a
 dtanh x = (1/(cosh x))**2
 
@@ -41,237 +280,3 @@ dmse value expected = fmap (2*) (value - expected)
 mse :: Error
 mse = Error fmse dmse
 
-hadamardProduct :: Floating a => Matrix a -> Matrix a -> Matrix a
-hadamardProduct mat1 mat2 
-    | (nrows mat1, ncols mat1) == (nrows mat2, ncols mat2) = _result
-    | otherwise = error "Dimension mismatch" where
-    _result = matrix (nrows mat1) (ncols mat2) (\(i,j) -> ((mat1 ! (i,j)) * (mat2 ! (i, j))))
-
-justValue :: Matrix Parameter -> Matrix Double
-justValue = fmap value
-
-justGrad  :: Matrix Parameter -> Matrix Double
-justGrad = fmap grad
-
-combineParam :: Matrix Double -> Matrix Double -> Matrix Parameter
-combineParam vals grads
-    | (nrows vals, ncols vals) == (nrows grads, ncols grads) = _result
-    | otherwise = error "Dimension mismatch" where
-        nrow = nrows grads :: Int
-        ncol = ncols grads :: Int
-        _lvals = toList vals :: [Double]
-        _lgrads = toList grads :: [Double]
-        _zip = zip _lvals _lgrads :: [(Double, Double)]
-        _params = map parameter _zip :: [Parameter]
-        _result = fromList nrow ncol _params
-
-inputLayer :: Int -> IO Network
-inputLayer _size = do
-    -- Generate Random Nodes
-    _node_values <- runif _size ((-1), 1) :: IO [Double]
-    let _zeros = replicate _size 0 :: [Double]
-    let _lzip = zip _node_values _zeros :: [(Double, Double)]
-    let _pnodes = map parameter _lzip :: [Parameter]
-    let _nodes = fromList _size 1 _pnodes :: Matrix Parameter
-    let _output = InputLayer _nodes
-    return $ _output
-
-pushWeightLayer :: Int -> Network -> IO Network
-pushWeightLayer _size _net = do
-    -- Generate Random nodes
-    _node_values <- runif _size ((-1), 1) :: IO [Double]
-    let _zeros = replicate _size 0 :: [Double]
-    let _lzip = zip _node_values _zeros :: [(Double, Double)]
-    let _pnodes = map parameter _lzip :: [Parameter]
-    let _nodes = fromList _size 1 _pnodes :: Matrix Parameter
-    
-    -- Generate Random weights
-    let _nrow = _size :: Int
-    let _ncol = nrows (nodes _net) :: Int
-    _weight_values <- runif (_nrow*_ncol) ((-1), 1) :: IO [Double]
-    let _wzeros = replicate (_nrow*_ncol) 0 :: [Double]
-    let _wzip = zip _weight_values _wzeros :: [(Double, Double)]
-    let _pweights = map parameter _wzip :: [Parameter]
-    let _weights = fromList _nrow _ncol _pweights :: Matrix Parameter
-
-    -- Generate Random Biases
-    _bias_values <- runif _size ((-1), 1) :: IO [Double]
-    let _bzeros = replicate _size 0 :: [Double]
-    let _bzip = zip _bias_values _bzeros :: [(Double, Double)]
-    let _pbias = map parameter _bzip :: [Parameter]
-    let _bias = fromList _size 1 _pbias :: Matrix Parameter
-    
-
-    let _output = HiddenLayer _nodes _weights _bias _net
-    return $ _output
-
-pushActivationLayer :: Activator -> Network -> IO Network
-pushActivationLayer _actv _net = do
-    let _nrow = nrows (nodes _net) :: Int
-    _node_values <- runif _nrow ((-1), 1) :: IO [Double]
-    let _zeros = replicate _nrow 0 :: [Double]
-    let _lzip = zip _node_values _zeros :: [(Double, Double)]
-    let _pnodes = map parameter _lzip :: [Parameter]
-    let _nodes = fromList _nrow 1 _pnodes :: Matrix Parameter
-
-    let _output = ActivationLayer _nodes _actv _net
-    return _output
-
-pushLayer :: Int -> Activator -> Network -> IO Network
-pushLayer _size _actv _net = pushWeightLayer _size _net >>= pushActivationLayer _actv
-
-pzerograd :: Parameter -> Parameter
-pzerograd (Parameter val _) = Parameter val 0
-
-zerograd :: Network -> Network
-zerograd (InputLayer _nodes) = InputLayer (fmap pzerograd _nodes)
-zerograd (HiddenLayer _nodes _weights _biases _tail) = HiddenLayer (fmap pzerograd _nodes) (fmap pzerograd _weights) (fmap pzerograd _biases) (zerograd _tail)
-zerograd (ActivationLayer _nodes _actv _ntail) = ActivationLayer (fmap pzerograd _nodes) _actv (zerograd _ntail)
-
-feedforward :: [Double] -> Network -> Network
-feedforward _input (InputLayer _nodes) 
-    | nrows _nodes == nrow = InputLayer _nodes
-    | otherwise = error "Dimension mismatch." where
-        nrow = length _input :: Int;
-        _zeros = zero nrow 1 :: Matrix Double
-        _minput = fromList nrow 1 _input :: Matrix Double
-        _nodes = combineParam _minput _zeros
-
-feedforward _input (HiddenLayer _nodes _weights _biases _tail) = _result where
-    _newtail = feedforward _input _tail :: Network
-    _x = justValue . nodes $ _newtail :: Matrix Double
-    _M = justValue _weights :: Matrix Double
-    _b = justValue _biases :: Matrix Double
-    _y = _M * _x + _b :: Matrix Double
-    _grads = justGrad _nodes :: Matrix Double
-    _newnodes = combineParam _y _grads :: Matrix Parameter
-    _result = HiddenLayer _newnodes _weights _biases _newtail
-
-feedforward _input (ActivationLayer _nodes _activator _tail) = _result where
-    _newtail = feedforward _input _tail :: Network
-    _x = justValue . nodes $ _newtail :: Matrix Double
-    _y = fmap (function _activator) _x :: Matrix Double
-    _grads = justGrad _nodes :: Matrix Double
-    _newnodes = combineParam _y _grads :: Matrix Parameter
-    _result = ActivationLayer _newnodes _activator _newtail
-    
-
-
--- A Layer contains a set of nodes y, a set of Weights W and a set of biases b such that
--- y = W x + b, 
--- where x is the set of nodes of the previous layer.
---
--- Under this notation, we calculate the gradient as follows:
--- grad(W) = grad(y) * t(x)
--- grad(b) = grad(y)
--- grad(x) = t(W) * grad(y)
---
--- xbackpropagate receives as input grad(y) and the network. 
--- It then calculates grad(w), grad(b).
--- Then, it recurisvely calculates grad(x) backpropagating through the network.
---
--- For more information: https://mlvu.github.io/
-
-xbackpropagate :: Matrix Double -> Network -> Network
-xbackpropagate _grads (InputLayer _nodes) = _result where
-    _values = justValue _nodes
-    _original_grads = justGrad _nodes
-    _newnodes = combineParam _values  (_original_grads + _grads)
-    _result = InputLayer _newnodes
-
-xbackpropagate _grads (HiddenLayer _nodes _weights _biases _tail) = _result where
-    _biases_values = justValue _biases :: Matrix Double
-    _biases_weights = justGrad _biases :: Matrix Double
-    _newbiases = combineParam _biases_values (_biases_weights + _grads) :: Matrix Parameter
-
-    _weight_values = justValue _weights :: Matrix Double
-    _weight_grads_delta = _grads * (transpose _x) :: Matrix Double
-    _x = justValue . nodes $ _tail :: Matrix Double
-    _weight_grads = justGrad _weights :: Matrix Double
-    _newweights = combineParam _weight_values (_weight_grads + _weight_grads_delta)
-
-    _x_grads = (transpose _weight_values) * _grads
-    _newtail = xbackpropagate _x_grads _tail
-
-    _newnodes = combineParam (justValue _nodes) ((justGrad _nodes) + _grads)
-    _result = HiddenLayer _newnodes _newweights _newbiases _newtail
-
-xbackpropagate _grads (ActivationLayer _nodes _activator _tail) = _result where
-    _values = justValue _nodes
-    _weights = justGrad _nodes
-    _newnodes = combineParam _values (_weights + _grads)
-
-    _x = justValue . nodes $ _tail :: Matrix Double
-    _Dx = fmap (derivative _activator) _x :: Matrix Double
-    _x_grads = hadamardProduct _grads _Dx :: Matrix Double
-    _newtail = xbackpropagate _x_grads _tail :: Network
-    _result = ActivationLayer _newnodes _activator _newtail :: Network
-
-backpropagate :: Error -> [Double] -> Network -> Network
-backpropagate _err _expected _net = xbackpropagate _grads _net where
-    _output = justValue . nodes $ _net :: Matrix Double
-    _mexpected = fromList (nrows _output) (ncols _output) _expected :: Matrix Double
-    _grads = (egrad _err) _output _mexpected :: Matrix Double
-    
-deviation :: Error -> [Double] -> Network -> Double
-deviation _err _expected _net = _deviation where
-    _output = justValue . nodes $ _net :: Matrix Double
-    _outputlist = toList _output :: [Double]
-    _deviation = (efunc _err) _expected _outputlist :: Double
-
-updateWeights :: Double -> Network -> Network
-updateWeights rate (InputLayer x) = (InputLayer x)
-updateWeights rate (HiddenLayer _nodes _weights _biases _ntail) = _result where
-    _weightvalues = justValue _weights
-    _weightgrads = justGrad _weights
-    _newweights = combineParam (_weightvalues - (fmap (*rate) _weightgrads)) _weightgrads
-    _biasvalues = justValue _biases
-    _biasgrad = justGrad _biases
-    _newbiases = combineParam (_biasvalues - (fmap (*rate) _biasgrad)) _biasgrad
-    _newtail = updateWeights rate _ntail
-    _result = HiddenLayer _nodes _newweights _newbiases _newtail
-
-updateWeights rate (ActivationLayer _nodes _actv _ntail) = ActivationLayer _nodes _actv (updateWeights rate _ntail)
-
-
-printNetwork :: Network -> IO ()
-printNetwork (InputLayer nodes) = do
-    putStrLn $ "Input Layer"
-    putStrLn $ "Nodes"
-    putStrLn $ show (justValue nodes) 
-    putStrLn $ show (justGrad nodes)
-    putStrLn $ ""
-
-printNetwork (HiddenLayer nodes weights bias tail) = do
-    printNetwork tail
-    putStrLn $ "Hidden Network"
-    putStrLn $ "\nWeights"
-    putStrLn $ show (justValue weights) 
-    putStrLn $ show (justGrad weights)
-    putStrLn $ "\nBias"
-    putStrLn $ show (justValue bias) 
-    putStrLn $ show (justGrad bias)
-    putStrLn $ "Nodes"
-    putStrLn $ show (justValue nodes) 
-    putStrLn $ show (justGrad nodes)
-
-printNetwork (ActivationLayer nodes activator tail) = do
-    printNetwork tail
-    putStrLn $ "Activation function"
-    putStrLn $ "Function: " ++ (show . name $ activator)
-    putStrLn $ "Nodes"
-    putStrLn $ show (justValue nodes) 
-    putStrLn $ show (justGrad nodes)
-
-
-
--- Loop:
--- zerograd()
--- For t in Training Data:
---      network = feedforward network t
---      network = backpropagate network
--- network = updateWeights network rate
---
---
--- TODO: Rename every variable used in every function. The code, as it stands now, is unreadable.
---

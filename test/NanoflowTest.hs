@@ -28,8 +28,8 @@ main = hspec $ do
             --
             -- 
             network <- inputLayer 1 >>= pushLayer 1 htan  -- Generate Network
-            let m = getElem 1 1(justValue . weights . ntail $ network) -- Get m
-            let b = getElem 1 1(justValue . biases  . ntail $ network) -- Get b
+            let m = getElem 1 1(justValue . lweights . ltail $ network) -- Get m
+            let b = getElem 1 1(justValue . lbiases  . ltail $ network) -- Get b
             let x = 3 -- Set x
             let c = 5 -- Set c
             let ff = feedforward [x] network  -- Feedforward
@@ -42,14 +42,15 @@ main = hspec $ do
             let dedm = dedn2 * x              -- Calculate correct de/dm
             let dedb = dedn2                  -- Calculate correct de/db
             -- Compare values with what we got in backpropagation
-            let ededn1 = getElem 1 1 (justGrad . nodes $ bp)
-            let ededn2 = getElem 1 1 (justGrad . nodes . ntail $ bp)
-            let ededm  = getElem 1 1 (justGrad . weights . ntail $ bp)
-            let ededb  = getElem 1 1 (justGrad . biases . ntail $ bp)
+            let ededn1 = getElem 1 1 (justGrad . lnodes $ bp)
+            let ededn2 = getElem 1 1 (justGrad . lnodes . ltail $ bp)
+            let ededm  = getElem 1 1 (justGrad . lweights . ltail $ bp)
+            let ededb  = getElem 1 1 (justGrad . lbiases . ltail $ bp)
 
-            ededn1 `shouldBe` dedn1
-            ededn2 `shouldBe` dedn2
-            ededm `shouldBe` dedm
-            ededb `shouldBe` dedb
+            let threshold = 0.0001
+            abs (ededn1 - dedn1) `shouldSatisfy` (< threshold)
+            abs (ededn2 - dedn2) `shouldSatisfy` (< threshold)
+            abs (ededm - dedm) `shouldSatisfy` (< threshold)
+            abs (ededb - dedb) `shouldSatisfy` (< threshold)
 
             return ()
