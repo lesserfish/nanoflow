@@ -63,24 +63,22 @@ loop n rate net training_set
         output <- loop (n - 1) rate newnet training_set 
         return $ output
 
-evaluate :: Network -> [(Matrix Double, Matrix Double)] -> IO Double
-evaluate network [] = return 0
-evaluate network (y:ys) = do
+getAccuracy :: Network -> [(Matrix Double, Matrix Double)] -> IO Double
+getAccuracy network [] = return 0
+getAccuracy network (y:ys) = do
     let (input, output) = y :: (Matrix Double, Matrix Double)
     let pred' = getElem 1 1 (prediction (feedforward (toList input) network)) :: Double
     let pred = if pred' > 0.5 then 1 else 0
---    putStrLn $ "Correct: " ++ (show . (getElem 1 1) $ output) ++ " Estimated: " ++ show pred
     let hit = if pred == (getElem 1 1 output) then 1 else 0
-    rest <- evaluate network ys
+    rest <- getAccuracy network ys
     return $ hit + rest
 
 main :: IO ()
 main = do
   training_set <- make_moon 100 0.01
-
   model <- inputLayer 2 >>= pushLayer 6 htan >>= pushLayer 6 htan >>= pushLayer 1 htan
   result <- loop 500 (0.001) model training_set
-  acc <- (evaluate result training_set)
+  acc <- (getAccuracy result training_set)
   let proportion = acc / (fromIntegral . length $ training_set) :: Double
   putStrLn $ "Accuracy: " ++ show proportion
   return ()
