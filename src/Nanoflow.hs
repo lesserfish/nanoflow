@@ -103,7 +103,7 @@ pushActivationLayer activator net = do
     return $ (ActivationLayer nodes activator net)
 
 pushLayer :: Int -> Activator -> Network -> IO Network
-pushLayer _size _actv _net = pushWeightLayer _size _net >>= pushActivationLayer _actv
+pushLayer size actv net = pushWeightLayer size net >>= pushActivationLayer actv
 
 pzerograd :: Parameter -> Parameter
 pzerograd (Parameter val _) = Parameter val 0
@@ -207,7 +207,7 @@ deviation err lexpected_value net = deviation where
 
 updateWeights :: Double -> Network -> Network
 updateWeights rate (InputLayer x) = (InputLayer x)
-updateWeights rate (ActivationLayer _nodes _actv _ntail) = ActivationLayer _nodes _actv (updateWeights rate _ntail)
+updateWeights rate (ActivationLayer nodes actv tail) = ActivationLayer nodes actv (updateWeights rate tail)
 updateWeights rate (HiddenLayer nodes weights biases tail) = output where
     delta_weight = fmap (*rate) (justGrad weights)
     newweights = addValue weights delta_weight
