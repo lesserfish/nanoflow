@@ -113,7 +113,12 @@ zerograd (InputLayer nodes) = InputLayer (fmap pzerograd nodes)
 zerograd (HiddenLayer nodes weights biases tail) = HiddenLayer (fmap pzerograd nodes) (fmap pzerograd weights) (fmap pzerograd biases) (zerograd tail)
 zerograd (ActivationLayer nodes activator tail) = ActivationLayer (fmap pzerograd nodes) activator (zerograd tail)
 
-feedforward :: [Double] -> Network -> Network
+inputSize :: Network -> Int 
+inputSize (InputLayer nodes) = nrows nodes
+inputSize (HiddenLayer _ _ _ tail) = inputSize tail
+inputSize (ActivationLayer _ _ tail) = inputSize tail
+
+
 feedforward input (InputLayer nodes) 
     | nrows nodes == rows = output
     | otherwise = error "Dimension mismatch." where
@@ -201,13 +206,16 @@ deviation err lexpected_value net = deviation where
     lpredicted_value = toList predicted_value
     deviation = (efunc err) lpredicted_value lexpected_value
 
+prediction :: Network -> Matrix Double
+prediction = justValue . lnodes
+
 updateWeights :: Double -> Network -> Network
 updateWeights rate (InputLayer x) = (InputLayer x)
 updateWeights rate (ActivationLayer nodes actv tail) = ActivationLayer nodes actv (updateWeights rate tail)
 updateWeights rate (HiddenLayer nodes weights biases tail) = output where
-    delta_weight = fmap (*rate) (justGrad weights)
+    delta_weight = fmap (*(-rate)) (justGrad weights)
     newweights = addValue weights delta_weight
-    delta_bias = fmap (*rate) (justGrad biases)
+    delta_bias = fmap (*(-rate)) (justGrad biases)
     newbiases = addValue biases delta_bias
     newtail = updateWeights rate tail
     output = HiddenLayer nodes newweights newbiases newtail
