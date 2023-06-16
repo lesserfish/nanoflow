@@ -267,13 +267,6 @@ printNetwork (ActivationLayer nodes activator tail) =
 instance Show Network where
     show = printNetwork
 
--- Loop:
--- zerograd()
--- For t in Training Data:
---      network = feedforward network t
---      network = backpropagate network
--- network = updateWeights network rate
-
 -- Activator and Error functions
 --
 -- tanh
