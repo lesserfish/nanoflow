@@ -17,8 +17,8 @@ make_moon n epsilon = do
     let steps = [0, 0 + step_size .. pi]
     let outer' = [[cos alpha, sin alpha] | alpha <- steps] :: [[Double]]
     let inner' = [[1 - cos alpha, 0.5 - sin alpha] | alpha <- steps] :: [[Double]]
-    outer <- mapM (add_noise 0.1) outer'
-    inner <- mapM (add_noise 0.1) inner'
+    outer <- mapM (add_noise epsilon) outer'
+    inner <- mapM (add_noise epsilon) inner'
     let outer_position =  outer
     let outer_class = replicate (length outer_position) [0] 
     let inner_position = inner
