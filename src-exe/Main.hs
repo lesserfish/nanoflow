@@ -1,6 +1,8 @@
 import Nanoflow
 import System.Random
+import Control.DeepSeq
 import Text.Printf (printf)
+import Control.Monad
 
 
 add_noise :: Double -> [Double] -> IO [Double]
@@ -42,7 +44,6 @@ getAccuracy network evaluation_set = do
     let denominator = 1 / (fromIntegral . length $ evaluation_set) :: Double
     hits <- getHits network evaluation_set
     return $ hits * denominator
-
 loop :: Int -> Double -> Network -> [([Double], [Double])] -> IO Network
 loop n rate net training_set
     | n < 0 = return net
@@ -53,13 +54,12 @@ loop n rate net training_set
         let zgnet = zerograd net
         let gnet = accumulate_grad mse training_set zgnet
         let newnet = updateWeights rate gnet
-
-        output <- loop (n - 1) rate newnet training_set 
-        return $ output
+        newnet `deepseq` return () -- Force evaluate
+        loop (n - 1) rate newnet training_set 
 
 main :: IO ()
 main = do
   training_set <- make_moon 100 0.01
   model <- inputLayer 2 >>= pushLayer 3 htan >>= pushLayer 9 htan >>= pushLayer 1 htan
-  result <- loop 500 (0.001) model training_set
+  result <- loop 3000 (0.001) model training_set
   return ()

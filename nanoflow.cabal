@@ -29,7 +29,8 @@ library
     -- other-extensions:
     build-depends:    base >=4.16.4.0,
                       matrix >= 0.3.6.1,
-                      random >= 1.2.1.1
+                      random >= 1.2.1.1,
+                      deepseq >= 1.4.8.1
     hs-source-dirs:   src
     default-language: Haskell2010
 
@@ -44,7 +45,8 @@ executable nanoflow
     build-depends:    base >=4.16.4.0,
                       matrix >= 0.3.6.1,
                       nanoflow,
-                      random >= 1.2.1.1
+                      random >= 1.2.1.1,
+                      deepseq >= 1.4.8.1
 
     hs-source-dirs:   src-exe
     default-language: Haskell2010

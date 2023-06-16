@@ -1,18 +1,24 @@
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+
 module Nanoflow where
 import Prelude hiding ((<*>))
 import Control.Monad (replicateM)
+import GHC.Generics (Generic)
+import Control.DeepSeq
 import System.Random (randomRIO)
 import Data.Matrix
 
 data Error = Error {efunc :: [Double] -> [Double] -> Double, egrad :: Matrix Double -> Matrix Double -> Matrix Double}
-data Activator = Activator {afunc :: Double -> Double, agrad :: Double -> Double, aname :: String}
-data Parameter = Parameter {pvalue :: Double, pgrad :: Double} deriving Show
+data Activator = Activator {afunc :: Double -> Double, agrad :: Double -> Double, aname :: String} deriving (Generic, NFData)
+data Parameter = Parameter {pvalue :: Double, pgrad :: Double} deriving (Show, Generic, NFData)
 data Network = InputLayer  {lnodes :: Matrix Parameter} |
                HiddenLayer {lnodes :: Matrix Parameter, lweights :: Matrix Parameter, lbiases :: Matrix Parameter, ltail :: Network} |
-               ActivationLayer {lnodes :: Matrix Parameter, lactivator :: Activator, ltail :: Network}
+               ActivationLayer {lnodes :: Matrix Parameter, lactivator :: Activator, ltail :: Network} deriving (Generic, NFData)
 
 instance Show Activator where
     show (Activator _ _ name) = show name
+
+
 
 -- Generate n random values between (low, max)
 runif :: Int -> (Double, Double) -> IO [Double]
