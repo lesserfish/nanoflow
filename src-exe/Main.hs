@@ -1,6 +1,6 @@
 module Main where
-import Demos.NNMoons
+import Demos.GradientExample
 
 
 main :: IO()
-main = Demos.NNMoons.main
+main = Demos.GradientExample.main
