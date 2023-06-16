@@ -29,26 +29,27 @@ make_moon n epsilon = do
     return $ output
 
 
-getHits :: Network -> [([Double], [Double])] -> IO Double
-getHits network [] = return 0
-getHits network (y:ys) = do
-    let (input, output) = y :: ([Double], [Double])
-    let pred' = (prediction (feedforward input network)) !! 0:: Double
-    let pred = if pred' > 0.5 then 1 else 0
-    let hit = if pred == (output !! 0) then 1 else 0
-    rest <- getHits network ys
-    return $ hit + rest
+getHits :: Network -> [([Double], [Double])] -> Double
+getHits network [] = 0
+getHits network (y:ys) = result where
+    (input, output) = y :: ([Double], [Double])
+    pred' = (prediction (feedforward input network)) !! 0:: Double
+    pred = if pred' > 0.5 then 1 else 0
+    hit = if pred == (output !! 0) then 1 else 0
+    rest = getHits network ys
+    result = hit + rest
 
-getAccuracy :: Network -> [([Double], [Double])] -> IO Double
-getAccuracy network evaluation_set = do
-    let denominator = 1 / (fromIntegral . length $ evaluation_set) :: Double
-    hits <- getHits network evaluation_set
-    return $ hits * denominator
+getAccuracy :: Network -> [([Double], [Double])] -> Double
+getAccuracy network evaluation_set = result where
+    denominator = 1 / (fromIntegral . length $ evaluation_set) :: Double
+    hits = getHits network evaluation_set
+    result = hits * denominator
+
 loop :: Int -> Double -> Network -> [([Double], [Double])] -> IO Network
 loop n rate net training_set
     | n < 0 = return net
     | otherwise = do
-        accuracy <- (getAccuracy net training_set)
+        let accuracy = getAccuracy net training_set
         printf "Iteration: %03d Accuracy: %.5f\n" n accuracy
 
         let zgnet = zerograd net
