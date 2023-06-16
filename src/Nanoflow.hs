@@ -199,15 +199,23 @@ backpropagate err lexpected_value net = xbackpropagate grads net where
     predicted_value = justValue . lnodes $ net
     expected_value = fromList (nrows predicted_value) (ncols predicted_value) lexpected_value
     grads = (egrad err) predicted_value expected_value
-    
+
+
+accumulate_grad :: Error -> [([Double], [Double])] -> Network -> Network
+accumulate_grad err [] net = net
+accumulate_grad err (t:ts) net = accumulate_grad err ts bpnet where
+    (input, correct) = t
+    ffnet = feedforward input net
+    bpnet = backpropagate err correct ffnet
+   
 deviation :: Error -> [Double] -> Network -> Double
 deviation err lexpected_value net = deviation where
     predicted_value = justValue . lnodes $ net
     lpredicted_value = toList predicted_value
     deviation = (efunc err) lpredicted_value lexpected_value
 
-prediction :: Network -> Matrix Double
-prediction = justValue . lnodes
+prediction :: Network -> [Double]
+prediction = toList . justValue . lnodes
 
 updateWeights :: Double -> Network -> Network
 updateWeights rate (InputLayer x) = (InputLayer x)
