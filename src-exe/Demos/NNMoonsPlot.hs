@@ -94,7 +94,7 @@ main = do
   model <- inputLayer 2 >>= pushLayer 3 htan >>= pushLayer 9 htan >>= pushLayer 1 htan
   result <- loop 2000 (0.001) model training_set
   
-  let border = 3
+  let border = 2.4
   let pixels = 300
   onscreen $ (plotNetwork border pixels result) % (plotTrainingSet border pixels training_set)
   putStr "Press Enter to exit..."

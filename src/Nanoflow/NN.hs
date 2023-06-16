@@ -9,7 +9,7 @@ import System.Random (randomRIO)
 import Data.Matrix
 
 data Error = Error {efunc :: [Double] -> [Double] -> Double, egrad :: Matrix Double -> Matrix Double -> Matrix Double}
-data Activator = Activator {afunc :: Double -> Double, agrad :: Double -> Double, aname :: String} deriving (Generic, NFData)
+data Activator = Activator {afunc :: Matrix Double -> Matrix Double, agrad :: Matrix Double -> Matrix Double, aname :: String} deriving (Generic, NFData)
 data Parameter = Parameter {pvalue :: Double, pgrad :: Double} deriving (Show, Generic, NFData)
 data Network = InputLayer  {lnodes :: Matrix Parameter} |
                HiddenLayer {lnodes :: Matrix Parameter, lweights :: Matrix Parameter, lbiases :: Matrix Parameter, ltail :: Network} |
@@ -147,7 +147,7 @@ feedforward input (HiddenLayer nodes weights biases tail) = output where
 feedforward input (ActivationLayer nodes activator tail) = output where
     newtail = feedforward input tail
     x = justValue . lnodes $ newtail
-    values = fmap (afunc activator) x
+    values = (afunc activator) x
     grads = justGrad nodes
     newnodes = zipParam values grads
     output = ActivationLayer newnodes activator newtail
@@ -195,7 +195,7 @@ xbackpropagate grads (HiddenLayer nodes weights biases tail) = output where
 xbackpropagate grads (ActivationLayer nodes activator tail) = output where
     newnodes = addGrad nodes grads
     x = justValue . lnodes $ tail
-    dx = fmap (agrad activator) x
+    dx = (agrad activator) x
     delta_x = grads <*> dx 
     newtail = xbackpropagate delta_x tail
     output = ActivationLayer newnodes activator newtail
@@ -274,11 +274,11 @@ dtanh :: Floating a => a -> a
 dtanh x = (1/(cosh x))**2
 
 htan :: Activator 
-htan = Activator Prelude.tanh dtanh "tanh"
+htan = Activator (fmap tanh) (fmap dtanh) "tanh"
 
 -- Identity 
 idd :: Activator
-idd = Activator id (\x -> 1) "id"
+idd = Activator id (fmap (\x -> 1)) "id"
 
 -- Mean squared Error
 fmse :: [Double] -> [Double] -> Double
