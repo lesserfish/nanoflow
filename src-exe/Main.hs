@@ -59,7 +59,7 @@ loop n rate net training_set
 
 main :: IO ()
 main = do
-  training_set <- make_moon 100 0.01
+  training_set <- make_moon 100 0.1
   model <- inputLayer 2 >>= pushLayer 3 htan >>= pushLayer 9 htan >>= pushLayer 1 htan
   result <- loop 3000 (0.001) model training_set
   return ()
