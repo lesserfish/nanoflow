@@ -1,4 +1,4 @@
-import Nanoflow
+import Nanoflow.NN
 import System.Random
 import Control.DeepSeq
 import Text.Printf (printf)

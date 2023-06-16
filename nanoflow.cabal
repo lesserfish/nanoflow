@@ -20,7 +20,7 @@ category:           Math
 extra-source-files: CHANGELOG.md
 
 library
-    exposed-modules:  Nanoflow
+    exposed-modules:  Nanoflow.NN, Nanoflow.Gradient
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -30,7 +30,8 @@ library
     build-depends:    base >=4.16.4.0,
                       matrix >= 0.3.6.1,
                       random >= 1.2.1.1,
-                      deepseq >= 1.4.8.1
+                      deepseq >= 1.4.8.1,
+                      hashable >= 1.4.2.0
     hs-source-dirs:   src
     default-language: Haskell2010
 
@@ -55,7 +56,8 @@ test-suite nanoflow-test
     default-language: Haskell2010
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
-    main-is:          NanoflowTest.hs
+    main-is:          Main.hs
+    other-modules:    GradientTest, NNTest
     build-depends:    base >=4.16.4.0,
                       nanoflow,
                       matrix >= 0.3.6.1,
