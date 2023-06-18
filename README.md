@@ -29,5 +29,6 @@ We also have a feed forward neural network framework implemented.
 
 For a working demo, please see *src-exe/Demos/NNMoons.hs* and *src-exe/Demos/NNMoonsPlot.hs*
 
-![moon-demo](https://github.com/lesserfish/nanoflow/assets/73536889/3664541f-564e-4a18-8448-52019edc7e6c)
+
+![Figure_1](https://github.com/lesserfish/nanoflow/assets/73536889/3fa685c7-f2f7-4bae-88eb-e40a27c67890)
 ![moon-demo2](https://github.com/lesserfish/nanoflow/assets/73536889/38af635c-1c3b-4508-befd-95ac37ceadba)
