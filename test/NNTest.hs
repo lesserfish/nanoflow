@@ -5,7 +5,7 @@ import Data.Matrix
 
 test :: Spec
 test = do
-    describe "Backpropagation" $ do
+    describe "NN Backpropagation" $ do
         it "checks that backpropagation works for a simple expression" $ do
             -- The model is
             -- x ---> mx + b ---> tanh(mx + b) ---> (tanh(mx + b) - c)**2

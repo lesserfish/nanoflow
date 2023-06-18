@@ -12,8 +12,11 @@ data Error = Error {efunc :: [Double] -> [Double] -> Double, egrad :: Matrix Dou
 data Activator = Activator {afunc :: Matrix Double -> Matrix Double, agrad :: Matrix Double -> Matrix Double, aname :: String} deriving (Generic, NFData)
 data Parameter = Parameter {pvalue :: Double, pgrad :: Double} deriving (Show, Generic, NFData)
 data Network = InputLayer  {lnodes :: Matrix Parameter} |
-               HiddenLayer {lnodes :: Matrix Parameter, lweights :: Matrix Parameter, lbiases :: Matrix Parameter, ltail :: Network} |
+               DenseLayer {lnodes :: Matrix Parameter, lweights :: Matrix Parameter, lbiases :: Matrix Parameter, ltail :: Network} |
                ActivationLayer {lnodes :: Matrix Parameter, lactivator :: Activator, ltail :: Network} deriving (Generic, NFData)
+            -- ConvolutionLayer {lkernel :: Matrix Parameter, lconvsetting :: ConvSetting, ltail :: Network} |
+            -- PoolLayer {lpoolsetting :: PoolSetting, lpool :: Pool, ltail :: Network} |
+            -- ReshapeLayer {lreshaper :: Reshaper, ltail :: Network} deriving (Generic, NFData)
 
 instance Show Activator where
     show (Activator _ _ name) = show name
@@ -79,8 +82,8 @@ inputLayer size = do
     let nodes = zipParam zeros zeros
     return $ (InputLayer nodes)
 
-pushWeightLayer :: Int -> Network -> IO Network
-pushWeightLayer size net = do
+pushDenseLayer :: Int -> Network -> IO Network
+pushDenseLayer size net = do
     -- Generate zero nodes
     let zeros = zeroM size 1
     let nodes = zipParam zeros zeros
@@ -97,7 +100,7 @@ pushWeightLayer size net = do
     let bias_grads = zeroM size 1
     let bias = zipParam bias_values bias_grads
     
-    return $ (HiddenLayer nodes weights bias net)
+    return $ (DenseLayer nodes weights bias net)
 
 pushActivationLayer :: Activator -> Network -> IO Network
 pushActivationLayer activator net = do
@@ -108,20 +111,20 @@ pushActivationLayer activator net = do
 
     return $ (ActivationLayer nodes activator net)
 
-pushLayer :: Int -> Activator -> Network -> IO Network
-pushLayer size actv net = pushWeightLayer size net >>= pushActivationLayer actv
+pushDALayer :: Int -> Activator -> Network -> IO Network
+pushDALayer size actv net = pushDenseLayer size net >>= pushActivationLayer actv
 
 pzerograd :: Parameter -> Parameter
 pzerograd (Parameter val _) = Parameter val 0
 
 zerograd :: Network -> Network
 zerograd (InputLayer nodes) = InputLayer (fmap pzerograd nodes)
-zerograd (HiddenLayer nodes weights biases tail) = HiddenLayer (fmap pzerograd nodes) (fmap pzerograd weights) (fmap pzerograd biases) (zerograd tail)
+zerograd (DenseLayer nodes weights biases tail) = DenseLayer (fmap pzerograd nodes) (fmap pzerograd weights) (fmap pzerograd biases) (zerograd tail)
 zerograd (ActivationLayer nodes activator tail) = ActivationLayer (fmap pzerograd nodes) activator (zerograd tail)
 
 inputSize :: Network -> Int 
 inputSize (InputLayer nodes) = nrows nodes
-inputSize (HiddenLayer _ _ _ tail) = inputSize tail
+inputSize (DenseLayer _ _ _ tail) = inputSize tail
 inputSize (ActivationLayer _ _ tail) = inputSize tail
 
 
@@ -134,7 +137,7 @@ feedforward input (InputLayer nodes)
         newnodes = zipParam values grads
         output = InputLayer newnodes
 
-feedforward input (HiddenLayer nodes weights biases tail) = output where
+feedforward input (DenseLayer nodes weights biases tail) = output where
     newtail = feedforward input tail
     x = justValue . lnodes $ newtail
     m = justValue weights 
@@ -142,7 +145,7 @@ feedforward input (HiddenLayer nodes weights biases tail) = output where
     values = m * x + b
     grads = justGrad nodes
     newnodes = zipParam values grads
-    output = HiddenLayer newnodes weights biases newtail
+    output = DenseLayer newnodes weights biases newtail
 
 feedforward input (ActivationLayer nodes activator tail) = output where
     newtail = feedforward input tail
@@ -180,7 +183,7 @@ xbackpropagate grads (InputLayer nodes) = output where
     newnodes = addGrad nodes grads
     output = InputLayer newnodes
 
-xbackpropagate grads (HiddenLayer nodes weights biases tail) = output where
+xbackpropagate grads (DenseLayer nodes weights biases tail) = output where
     newnodes = addGrad nodes grads
     newbiases = addGrad biases grads
     
@@ -190,7 +193,7 @@ xbackpropagate grads (HiddenLayer nodes weights biases tail) = output where
     delta_x = (transpose (justValue weights)) * grads
     newtail =  xbackpropagate delta_x tail
 
-    output = HiddenLayer newnodes newweights newbiases newtail
+    output = DenseLayer newnodes newweights newbiases newtail
 
 xbackpropagate grads (ActivationLayer nodes activator tail) = output where
     newnodes = addGrad nodes grads
@@ -226,13 +229,13 @@ prediction = toList . justValue . lnodes
 updateWeights :: Double -> Network -> Network
 updateWeights rate (InputLayer x) = (InputLayer x)
 updateWeights rate (ActivationLayer nodes actv tail) = ActivationLayer nodes actv (updateWeights rate tail)
-updateWeights rate (HiddenLayer nodes weights biases tail) = output where
+updateWeights rate (DenseLayer nodes weights biases tail) = output where
     delta_weight = fmap (*(-rate)) (justGrad weights)
     newweights = addValue weights delta_weight
     delta_bias = fmap (*(-rate)) (justGrad biases)
     newbiases = addValue biases delta_bias
     newtail = updateWeights rate tail
-    output = HiddenLayer nodes newweights newbiases newtail
+    output = DenseLayer nodes newweights newbiases newtail
 
 
 printNetwork :: Network -> String
@@ -242,7 +245,7 @@ printNetwork (InputLayer nodes) =
     show (justValue nodes) ++ "\n" ++
     show (justGrad nodes) ++ "\n\n"
 
-printNetwork (HiddenLayer nodes weights bias tail) = 
+printNetwork (DenseLayer nodes weights bias tail) = 
     printNetwork tail ++
     "Hidden Network\n" ++ 
     "\nWeights\n" ++

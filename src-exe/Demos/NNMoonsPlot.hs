@@ -8,7 +8,6 @@ import Control.Monad
 import Graphics.Matplotlib
 import System.IO (hFlush, stdout)
 
-
 add_noise :: Double -> [Double] -> IO [Double]
 add_noise epsilon values = do
     noise <- runif (length values) ((-epsilon), epsilon)
@@ -91,7 +90,7 @@ plotTrainingSet border pixels training_set = plot where
 main :: IO ()
 main = do
   training_set <- make_moon 100 0.1
-  model <- inputLayer 2 >>= pushLayer 3 htan >>= pushLayer 9 htan >>= pushLayer 1 htan
+  model <- inputLayer 2 >>= pushDALayer 3 htan >>= pushDALayer 9 htan >>= pushDALayer 1 htan
   result <- loop 2000 (0.001) model training_set
   
   let border = 2.4

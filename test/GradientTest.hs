@@ -23,8 +23,8 @@ test = do
             return()
         return()
 
-    describe "Backpropagation" $ do
-        it "checks backpropagation" $ do
+    describe "Expression Backpropagation" $ do
+        it "checks backpropagation for expressions" $ do
             a <- param 1
             b <- param 1
             c <- param 4
@@ -42,7 +42,7 @@ test = do
             (mse dxdb expected_dxdb) `shouldSatisfy` (< 0.01)
             (mse dxdc expected_dxdc) `shouldSatisfy` (< 0.01)
             return()
-    describe "Backpropagation" $ do
+    describe "Expression Backpropagation" $ do
         it "checks more backpropagation" $ do
             a <- param 0.3
             b <- param 0.1
@@ -63,7 +63,7 @@ test = do
             (mse dxdb expected_dxdb) `shouldSatisfy` (< 0.01)
             (mse dxdc expected_dxdc) `shouldSatisfy` (< 0.01)
             return()
-    describe "Backpropagation" $ do
+    describe "Expression Backpropagation" $ do
         it "checks even more backpropagation" $ do
             a <- param 0.3
             b <- param 0.5
