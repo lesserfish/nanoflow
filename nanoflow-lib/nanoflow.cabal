@@ -1,0 +1,50 @@
+cabal-version:      2.4
+name:               nanoflow
+version:            0.1.0.0
+synopsis:
+
+-- A longer description of the package.
+-- description:
+homepage:
+
+-- A URL where users can report bugs.
+-- bug-reports:
+license:            GPL-2.0-or-later
+license-file:       LICENSE
+author:             lesserfish
+maintainer:         lesserfish@pm.me
+
+-- A copyright notice.
+-- copyright:
+category:           Math
+extra-source-files: CHANGELOG.md
+
+library
+    exposed-modules:  Nanoflow.NN, Nanoflow.Gradient, Nanoflow.Graphics
+
+    -- Modules included in this library but not exported.
+    -- other-modules:
+
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    build-depends:    base >=4.16.4.0,
+                      matrix >= 0.3.6.1,
+                      random >= 1.2.1.1,
+                      deepseq >= 1.4.8.1,
+                      hashable >= 1.4.2.0,
+                      JuicyPixels >= 3.3.8,
+                      matplotlib >=  0.7.7
+
+    hs-source-dirs:   src
+    default-language: Haskell2010
+
+test-suite nanoflow-test
+    default-language: Haskell2010
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    other-modules:    GradientTest, NNTest
+    build-depends:    base >=4.16.4.0,
+                      nanoflow,
+                      matrix >= 0.3.6.1,
+                      hspec >= 2.11.1
