@@ -2,3 +2,4 @@ packages:
   nanoflow-lib/
   Demos/Gradient/
   Demos/Moons/
+  Demos/ImageClone/

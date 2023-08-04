@@ -1,0 +1,33 @@
+cabal-version:      2.4
+name:               ImageClone
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            GPL-3.0-or-later
+license-file:       LICENSE
+author:             lesserfish
+maintainer:         lesserfish@pm.me
+-- copyright:
+category:           Math
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+-- extra-source-files:
+
+common warnings
+    ghc-options: -Wall
+
+executable ImageClone
+    import:           warnings
+    main-is:          Main.hs
+    -- other-modules:
+    -- other-extensions:
+    build-depends:    base ^>=4.18.0.0,
+                      nanoflow ^>=0.1.0.0,
+                      sdl2 ^>=2.5.5.0,
+                      JuicyPixels ^>=3.3.8,
+                      matrix ^>=0.3.6.1,
+                      deepseq ^>=1.4.8.1,
+                      vector ^>=0.13.0.0
+
+    hs-source-dirs:   exe
+    default-language: Haskell2010
