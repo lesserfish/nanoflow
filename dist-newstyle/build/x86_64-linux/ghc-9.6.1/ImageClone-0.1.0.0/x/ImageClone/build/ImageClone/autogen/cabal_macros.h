@@ -60,6 +60,16 @@
   (major1) == 0 && (major2) <  1 || \
   (major1) == 0 && (major2) == 1 && (minor) <= 0)
 #endif /* MIN_VERSION_nanoflow */
+/* package random-1.2.1.1 */
+#ifndef VERSION_random
+#define VERSION_random "1.2.1.1"
+#endif /* VERSION_random */
+#ifndef MIN_VERSION_random
+#define MIN_VERSION_random(major1,major2,minor) (\
+  (major1) <  1 || \
+  (major1) == 1 && (major2) <  2 || \
+  (major1) == 1 && (major2) == 2 && (minor) <= 1)
+#endif /* MIN_VERSION_random */
 /* package sdl2-2.5.5.0 */
 #ifndef VERSION_sdl2
 #define VERSION_sdl2 "2.5.5.0"
@@ -70,6 +80,16 @@
   (major1) == 2 && (major2) <  5 || \
   (major1) == 2 && (major2) == 5 && (minor) <= 5)
 #endif /* MIN_VERSION_sdl2 */
+/* package stm-2.5.1.0 */
+#ifndef VERSION_stm
+#define VERSION_stm "2.5.1.0"
+#endif /* VERSION_stm */
+#ifndef MIN_VERSION_stm
+#define MIN_VERSION_stm(major1,major2,minor) (\
+  (major1) <  2 || \
+  (major1) == 2 && (major2) <  5 || \
+  (major1) == 2 && (major2) == 5 && (minor) <= 1)
+#endif /* MIN_VERSION_stm */
 /* package vector-0.13.0.0 */
 #ifndef VERSION_vector
 #define VERSION_vector "0.13.0.0"

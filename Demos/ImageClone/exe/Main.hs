@@ -10,19 +10,26 @@ import Foreign.C.Types
 import Data.Word
 import Data.Matrix
 import Data.List
+import System.Random
 import Text.Printf (printf)
 import Control.Monad (unless)
 import Control.DeepSeq
-import Control.Concurrent (threadDelay)
 import Codec.Picture
 import Data.Ord
+import Control.Concurrent
+import Control.Concurrent.STM
 
 type RGBA = (Word8, Word8, Word8, Word8)
 type Sample = ([Double], Double)
 type PixelData = ((Int, Int), RGBA)
 
-data SDLContext = SDLContext {sdlRenderer :: Renderer, sdlTexture :: Texture, textureSize :: (Int, Int)}
-data AppContext = AppContext {pixelMatrix :: Matrix RGBA, pixelData :: [PixelData], appNetwork :: Network, trainingData :: [Sample], learningRate :: Double}
+data SDLContext = SDLContext {sdlRenderer :: Renderer, sdlTexture :: Texture}
+data AppContext = AppContext {pixelMatrix :: Matrix RGBA, pixelData :: [PixelData], appNetwork :: Network, trainingData :: [Sample]}
+data SharedContext = SharedContext {
+                sharedTexture :: Texture, 
+                learningRate :: TVar Double, 
+                shouldExit :: TVar Bool, 
+                textureSize :: (Int, Int)}
 
 word2prob :: Word8 -> Double
 word2prob w = (fromIntegral w) / 255
@@ -147,12 +154,9 @@ net2pixdata network (width, height) = pixel_data where
 adjust_output :: Activator
 adjust_output = Activator (fmap ((0.5 *) . (0.5 *))) (fmap (0.5 *)) "adjust_output"
 
-sigmoid :: Activator
-sigmoid = Activator (fmap (\x -> (1/(1 + exp(-x))))) (fmap (\x -> (exp (-x))/(1 + exp(-x))**2)) "sigmoid"
-
 sample2String :: Sample -> String
-sample2String (left, right) = show (left', right') where
-    left' = fmap (printf "%.3f") left :: [String]
+sample2String (left, right) = left' ++ " - " ++ right' where
+    left' = "[" ++ (printf "%.3f" (left !! 0)) ++ ","++ (printf "%.3f" (left !! 1)) ++ "]" :: String
     right' = printf "%.3f" right :: String
 
 trainingdata2string :: [Sample] -> String
@@ -166,13 +170,23 @@ pixdata2string (y:ys) = this ++ "\n" ++ that where
     this = (printf "%3d" w) ++ " - "++ (printf "%3d" h) ++ " : " ++ (printf "%.3d" (pix2greyscale color))
     that = pixdata2string ys
 
+sample :: Double -> [a] -> IO [a]
+sample _ [] = return []
+sample p (y:ys) = do
+    that <- sample p ys
+    chance <- randomRIO (0, 1)
+    let this = if chance < p then [y] else []
+    return (this ++ that)
+    
+
 trainNetwork :: Int -> Double -> Network -> [Sample] -> IO Network
 trainNetwork n rate net training_set
     | n < 0 = return net
     | otherwise = do
-        let ratio = 1 / (fromIntegral . length $ training_set) :: Double
+        training_sample <- sample 0.3 training_set
+        let ratio = 1 / (fromIntegral . length $ training_sample) :: Double
         let zgnet = zerograd net
-        let gnet = accumulate_grad mse (fmap (\(x, y) -> (x, [y])) training_set) zgnet
+        let gnet = accumulate_grad mse (fmap (\(x, y) -> (x, [y])) training_sample) zgnet
         let newnet = updateWeights (ratio * rate) gnet
         newnet `deepseq` return () -- Force evaluate
         trainNetwork (n - 1) rate newnet training_set 
@@ -180,25 +194,40 @@ trainNetwork n rate net training_set
 main :: IO ()
 main = do
   -- Get Image data
-  (image_data, width, height) <- png2mat "/home/lesserfish/Documents/Code/nanoflow/Demos/ImageClone/images/10032.png"
+  (image_data, width, height) <- png2mat "/home/lesserfish/Documents/Code/nanoflow/Demos/ImageClone/images/10033.png"
   let pixel_data = pixmat2pixdata image_data
   let training_data = pixdata2trainingdata (width, height) pixel_data
   putStrLn . show . (fmap pix2greyscale) $ image_data
+  putStrLn $ trainingdata2string training_data
 
   -- Initialize SDL
   initializeAll
   window <- createWindow "Image Replicant" defaultWindow
   renderer <- createRenderer window (-1) defaultRenderer
-  texture <- createTexture renderer RGB888 TextureAccessStreaming (V2 (fromIntegral width) (fromIntegral height))
-  let sdlcontext = SDLContext renderer texture (width, height)
+  sharedtexture <- createTexture renderer RGB888 TextureAccessStreaming (V2 (fromIntegral width) (fromIntegral height))
+  sdltexture <- createTexture renderer RGB888 TextureAccessStreaming (V2 (fromIntegral width) (fromIntegral height))
+  paintPixels pixel_data sdltexture
+  
+  let sdlcontext = SDLContext renderer sdltexture
 
   -- Initialize Neural Network
 
-  network <- inputLayer 2 >>= pushDALayer 9 ((-1), 1) sigmoid >>= pushDALayer 7 ((-0.3), 0.5) sigmoid >>= pushDALayer 1 ((-0.3), 0.4) sigmoid
+  network <- inputLayer 2 >>= pushDALayer 64 ((-1.4), 1.4) sigmoid >>= pushDALayer 1 ((-1.4), 1.4) sigmoid
+  let appcontext = AppContext image_data pixel_data network training_data 
 
-  let appcontext = AppContext image_data pixel_data network training_data 0.1
-  appLoop sdlcontext appcontext
-  destroyTexture texture
+  learning_rate <- newTVarIO 1.0
+  should_exit <- newTVarIO False
+
+  let sharedcontext = SharedContext sharedtexture learning_rate should_exit (width, height)
+  toQuit <- newEmptyMVar
+
+  _ <- forkIO $ (sdlLoop sdlcontext sharedcontext) toQuit
+  _ <- forkIO $ (nnLoop appcontext sharedcontext)
+
+
+  takeMVar toQuit
+  destroyTexture sdltexture
+  destroyTexture sharedtexture
   destroyWindow window
 
 getError :: Network -> [Sample] -> Double
@@ -218,19 +247,38 @@ cost network training_data = result where
 
 nmPress :: Keycode -> Double
 nmPress input
-    | input == KeycodeN = (-1)
-    | input == KeycodeM = 1
+    | input == KeycodeI = (-1)
+    | input == KeycodeO = 1
+    | input == KeycodeU = (-10)
+    | input == KeycodeP = 10
     | otherwise = 0
 
-appLoop :: SDLContext -> AppContext -> IO ()
-appLoop sdlcontext appcontext = do
+nnLoop :: AppContext -> SharedContext -> IO ()
+nnLoop appcontext sharedcontext = do
+    let network = appNetwork appcontext
+    let training_data = trainingData appcontext
+    let (width, height) = textureSize sharedcontext
+    let texture = sharedTexture sharedcontext
+
+    learning_rate <- atomically $ readTVar (learningRate sharedcontext) :: IO Double
+    should_exit <- atomically $ readTVar (shouldExit sharedcontext) :: IO Bool
+    -- Train Network for N epochs
+    updated_network <- trainNetwork 1 learning_rate network training_data
+    let accuracy = cost network training_data
+    printf "Learning Rate: %.3f - Error: %.5f\n" learning_rate accuracy
+    let pixel_estimate = net2pixdata network (width, height)
+    paintPixels pixel_estimate texture
+
+    let appcontext' = AppContext (pixelMatrix appcontext) (pixelData appcontext) updated_network (trainingData appcontext)
+    unless should_exit (nnLoop appcontext' sharedcontext)
+
+sdlLoop :: SDLContext -> SharedContext -> MVar () -> IO ()
+sdlLoop sdlcontext sharedcontext toQuit = do
   
   let renderer = sdlRenderer sdlcontext
-  let texture = sdlTexture sdlcontext
-  let (width, height) = textureSize sdlcontext
-  let network = appNetwork appcontext
-  let training_data = trainingData appcontext
-  let learning_rate = learningRate appcontext
+  let sharedtexture = sharedTexture sharedcontext
+  let sdltexture = sdlTexture sdlcontext
+  learning_rate <- atomically $ readTVar (learningRate sharedcontext) :: IO Double
 
   events <- pollEvents
   -- Check Windows Close 
@@ -240,27 +288,24 @@ appLoop sdlcontext appcontext = do
           WindowClosedEvent _ -> True
           _ -> False
       qPressed = any eventIsQPress events
-  let learning_deviation event =
+
+  let keyHandle event =
         case eventPayload event of
             KeyboardEvent keyboardEvent -> if keyboardEventKeyMotion keyboardEvent == Pressed then nmPress (keysymKeycode (keyboardEventKeysym keyboardEvent)) else 0
             _ -> 0
-  let ldeviation = sum (fmap learning_deviation events)
+  let learning_deviation = sum (fmap keyHandle events)
+  let learning_rate' = learning_rate + 0.01 * learning_deviation
 
-  -- Train Network for N epochs
-  updated_network <- trainNetwork 1 learning_rate network training_data
-  let accuracy = cost network training_data
-  printf "Learning Rate: %.3f - Error: %.5f\n" learning_rate accuracy
-
-
-  -- Fill texture with information
-  let pixel_estimate = net2pixdata network (width, height)
-  paintPixels pixel_estimate texture
-
-  let rect = Rectangle (P (V2 0 9)) (V2 270 270) :: Rectangle CInt
+  let first_rect = Rectangle (P (V2 0 100)) (V2 400 400) :: Rectangle CInt
+  let second_rect = Rectangle (P (V2 400 100)) (V2 400 400) :: Rectangle CInt
   SDL.Video.Renderer.clear renderer
   rendererDrawColor renderer $= V4 127 127 127 255
-  SDL.Video.Renderer.copy renderer texture Nothing (Just rect)
+  SDL.Video.Renderer.copy renderer sharedtexture Nothing (Just second_rect)
+  SDL.Video.Renderer.copy renderer sdltexture Nothing (Just first_rect)
   present renderer
-  let appcontext' = AppContext (pixelMatrix appcontext) (pixelData appcontext) updated_network (trainingData appcontext) (learning_rate + 0.01 * ldeviation)
-  unless qPressed (appLoop sdlcontext appcontext')
 
+  atomically $ writeTVar (learningRate sharedcontext) learning_rate'
+  atomically $ writeTVar (shouldExit sharedcontext) qPressed
+
+  if qPressed then (putMVar toQuit ()) else return ()
+  unless qPressed (sdlLoop sdlcontext sharedcontext toQuit)

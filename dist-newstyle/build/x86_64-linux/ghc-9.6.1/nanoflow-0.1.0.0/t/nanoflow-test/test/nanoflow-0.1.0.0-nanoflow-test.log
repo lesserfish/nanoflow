@@ -1,0 +1,19 @@
+Test suite nanoflow-test: RUNNING...
+
+Forward pass
+  checks forward pass of first expression [✔]
+Expression Backpropagation
+  checks backpropagation for expressions [✔]
+Expression Backpropagation
+  checks more backpropagation [✔]
+Expression Backpropagation
+  checks even more backpropagation [✔]
+Double backpropagation still works
+  checks even more backpropagation [✔]
+NN Backpropagation
+  checks that backpropagation works for a simple expression [✔]
+
+Finished in 0.0004 seconds
+6 examples, 0 failures
+Test suite nanoflow-test: PASS
+Test suite logged to: /home/lesserfish/Documents/Code/nanoflow/dist-newstyle/build/x86_64-linux/ghc-9.6.1/nanoflow-0.1.0.0/t/nanoflow-test/test/nanoflow-0.1.0.0-nanoflow-test.log

@@ -286,6 +286,9 @@ frelu x = max 0 x
 relu :: Activator
 relu = Activator (fmap frelu) (fmap drelu) "relu"
 
+sigmoid :: Activator
+sigmoid = Activator (fmap (\x -> (1/(1 + exp(-x))))) (fmap (\x -> (exp (-x))/(1 + exp(-x))**2)) "sigmoid"
+
 -- Identity 
 idd :: Activator
 idd = Activator id (fmap (\x -> 1)) "id"
@@ -297,7 +300,8 @@ fmse xs ys
   | otherwise = sum [(x - y) ^ 2 | (x, y) <- zip xs ys] / fromIntegral (length xs)
 
 dmse :: Matrix Double -> Matrix Double -> Matrix Double
-dmse value expected = fmap (2*) (value - expected)
+dmse value expected = fmap ((2/n)*) (value - expected) where
+    n = fromIntegral ((nrows value) * (ncols value))
 
 mse :: Error
 mse = Error fmse dmse
