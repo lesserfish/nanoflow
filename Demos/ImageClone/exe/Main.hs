@@ -203,14 +203,6 @@ trainNetwork n rate net training_set
         newnet `deepseq` return () -- Force evaluate
         trainNetwork (n - 1) rate newnet training_set 
 
-flRelu :: Double -> Matrix Double -> Matrix Double
-flRelu a = fmap (\x -> if x >= 0 then x else a * x)
-
-dlRelu :: Double -> Matrix Double -> Matrix Double
-dlRelu a = fmap(\x -> if x >= 0 then 1 else a)
-
-lRelu :: Double -> Activator
-lRelu a = Activator (flRelu a) (dlRelu a) "leaky ReLu"
 main :: IO ()
 main = do
   -- Get Image data

@@ -279,13 +279,25 @@ dtanh x = (1/(cosh x))**2
 htan :: Activator 
 htan = Activator (fmap tanh) (fmap dtanh) "tanh"
 
+-- Relu
 drelu x = if x >= 0 then 1 else 0
-
 frelu x = max 0 x
 
 relu :: Activator
 relu = Activator (fmap frelu) (fmap drelu) "relu"
 
+-- Leaky Relu
+flRelu :: Double -> Matrix Double -> Matrix Double
+flRelu a = fmap (\x -> if x >= 0 then x else a * x)
+
+dlRelu :: Double -> Matrix Double -> Matrix Double
+dlRelu a = fmap(\x -> if x >= 0 then 1 else a)
+
+lRelu :: Double -> Activator
+lRelu a = Activator (flRelu a) (dlRelu a) "leaky ReLu"
+
+-- Sigmoid
+--
 sigmoid :: Activator
 sigmoid = Activator (fmap (\x -> (1/(1 + exp(-x))))) (fmap (\x -> (exp (-x))/(1 + exp(-x))**2)) "sigmoid"
 
