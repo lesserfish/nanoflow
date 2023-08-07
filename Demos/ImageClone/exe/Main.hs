@@ -24,7 +24,7 @@ type Sample = ([Double], Double)
 type PixelData = ((Int, Int), RGBA)
 
 data SDLContext = SDLContext {sdlRenderer :: Renderer, sdlTexture :: Texture}
-data AppContext = AppContext {pixelMatrix :: Matrix RGBA, pixelData :: [PixelData], appNetwork :: Network, trainingData :: [Sample]}
+data AppContext = AppContext {pixelMatrix :: Matrix RGBA, pixelData :: [PixelData], appNetwork :: Network, trainingData :: [Sample], iteration :: Int}
 data SharedContext = SharedContext {
                 sharedTexture :: Texture, 
                 learningRate :: TVar Double, 
@@ -71,6 +71,12 @@ pixmat2pixdata mat = output where
     helper_mat = matrix nrow ncol (\(i,j) -> ((i, j), (getElem i j mat)))
     output = toList $ helper_mat
 
+pixdata2pixmat :: (Int, Int) -> [PixelData] -> Matrix RGBA
+pixdata2pixmat (width, height) [] = matrix width height (\_ -> (0, 0, 0, 0))
+pixdata2pixmat wh (p:rest) = setElem color (x, y) mat where
+    mat = pixdata2pixmat wh rest
+    ((x, y), color) = p
+    
 pix2training :: (Int, Int) -> PixelData -> Sample
 pix2training (width, height) ((x, y), color) = (left, right) where
     left = [x', y']
@@ -143,13 +149,19 @@ paintPixels pixel_matrix texture = do
     paintPixels' pixel_matrix (fromIntegral width) pixels
     unlockTexture texture
 
-net2pixdata :: Network -> (Int, Int) -> [PixelData]
-net2pixdata network (width, height) = pixel_data where
-    pixel_data = toList helper_mat
-    helper_mat = matrix width height (\(i, j) -> ((i, j), id2val i j)) :: Matrix ((Int, Int), RGBA)
-    id2val i j = greyscale2pix . prob2word . (!! 0) . prediction . (\x -> feedforward x network) $ [i', j'] where
-        i' = word2prob . fromIntegral $ i
-        j' = word2prob . fromIntegral $ j
+net2pixmat :: (Int, Int) -> Network -> (Matrix RGBA)
+net2pixmat wh net = output where
+    helper = net2rawmat wh net
+    output = fmap (greyscale2pix . prob2word) helper
+
+net2rawmat :: (Int, Int) -> Network -> (Matrix Double)
+net2rawmat (width, height) network = raw_mat where
+    raw_mat = matrix width height (\(i, j) -> netAt (i, j)) where
+        netAt (i, j) = output where
+            output = (!!0) . prediction . (feedforward [i', j']) $ network
+            i' = (fromIntegral i) / (fromIntegral width) :: Double
+            j' = (fromIntegral j) / (fromIntegral height) :: Double
+
 
 adjust_output :: Activator
 adjust_output = Activator (fmap ((0.5 *) . (0.5 *))) (fmap (0.5 *)) "adjust_output"
@@ -183,7 +195,7 @@ trainNetwork :: Int -> Double -> Network -> [Sample] -> IO Network
 trainNetwork n rate net training_set
     | n < 0 = return net
     | otherwise = do
-        training_sample <- sample 0.3 training_set
+        training_sample <- sample 0.25 training_set
         let ratio = 1 / (fromIntegral . length $ training_sample) :: Double
         let zgnet = zerograd net
         let gnet = accumulate_grad mse (fmap (\(x, y) -> (x, [y])) training_sample) zgnet
@@ -191,14 +203,22 @@ trainNetwork n rate net training_set
         newnet `deepseq` return () -- Force evaluate
         trainNetwork (n - 1) rate newnet training_set 
 
+flRelu :: Double -> Matrix Double -> Matrix Double
+flRelu a = fmap (\x -> if x >= 0 then x else a * x)
+
+dlRelu :: Double -> Matrix Double -> Matrix Double
+dlRelu a = fmap(\x -> if x >= 0 then 1 else a)
+
+lRelu :: Double -> Activator
+lRelu a = Activator (flRelu a) (dlRelu a) "leaky ReLu"
 main :: IO ()
 main = do
   -- Get Image data
-  (image_data, width, height) <- png2mat "/home/lesserfish/Documents/Code/nanoflow/Demos/ImageClone/images/10033.png"
+  (image_data, width, height) <- png2mat "/home/lesserfish/Documents/Code/nanoflow/Demos/ImageClone/images/10034.png"
   let pixel_data = pixmat2pixdata image_data
   let training_data = pixdata2trainingdata (width, height) pixel_data
   putStrLn . show . (fmap pix2greyscale) $ image_data
-  putStrLn $ trainingdata2string training_data
+  putStrLn . show . (fmap pix2greyscale) . (pixdata2pixmat (width, height)) . (trainingdata2pixdata (width, height)) $ training_data
 
   -- Initialize SDL
   initializeAll
@@ -212,8 +232,8 @@ main = do
 
   -- Initialize Neural Network
 
-  network <- inputLayer 2 >>= pushDALayer 64 ((-1.4), 1.4) sigmoid >>= pushDALayer 1 ((-1.4), 1.4) sigmoid
-  let appcontext = AppContext image_data pixel_data network training_data 
+  network <- inputLayer 2 >>= pushDALayer 9 ((-1.4), 1.4) (lRelu 0.1) >>= pushDALayer 9 ((-1.4), 1.4) (lRelu 0.1) >>= pushDALayer 1 ((-1.4), 1.4) sigmoid
+  let appcontext = AppContext image_data pixel_data network training_data 0
 
   learning_rate <- newTVarIO 1.0
   should_exit <- newTVarIO False
@@ -257,6 +277,7 @@ nnLoop :: AppContext -> SharedContext -> IO ()
 nnLoop appcontext sharedcontext = do
     let network = appNetwork appcontext
     let training_data = trainingData appcontext
+    let it = iteration appcontext
     let (width, height) = textureSize sharedcontext
     let texture = sharedTexture sharedcontext
 
@@ -265,11 +286,15 @@ nnLoop appcontext sharedcontext = do
     -- Train Network for N epochs
     updated_network <- trainNetwork 1 learning_rate network training_data
     let accuracy = cost network training_data
-    printf "Learning Rate: %.3f - Error: %.5f\n" learning_rate accuracy
-    let pixel_estimate = net2pixdata network (width, height)
-    paintPixels pixel_estimate texture
+    printf "Iteration: %3d - Learning Rate: %.4f - Error: %.5f\n" it learning_rate accuracy
 
-    let appcontext' = AppContext (pixelMatrix appcontext) (pixelData appcontext) updated_network (trainingData appcontext)
+    let pixel_estimate = net2pixmat (width, height) network :: Matrix RGBA
+    image2Texture pixel_estimate texture
+
+    let matrix_estimate = (fmap (\x -> (printf "%.1f" x))) . (net2rawmat (width, height)) $ updated_network :: Matrix String
+    putStrLn $ if (mod it 10 == 0) then show matrix_estimate else ""
+
+    let appcontext' = AppContext (pixelMatrix appcontext) (pixelData appcontext) updated_network (trainingData appcontext) (it + 1)
     unless should_exit (nnLoop appcontext' sharedcontext)
 
 sdlLoop :: SDLContext -> SharedContext -> MVar () -> IO ()
