@@ -292,7 +292,7 @@ sdlLoop sdlcontext sharedcontext toQuit = do
 main :: IO ()
 main = do
   -- Get Image data
-  --setStdGen (mkStdGen 2396264)
+  setStdGen (mkStdGen 25)
   (image_data, width, height) <- png2mat "/home/lesserfish/Documents/Code/nanoflow/Demos/ImageClone/images/10036.png"
   let pixel_data = pixmat2pixdata image_data
   let training_data = pixdata2trainingdata (width, height) pixel_data
