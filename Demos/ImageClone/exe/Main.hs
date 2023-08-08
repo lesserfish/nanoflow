@@ -24,7 +24,7 @@ type Sample = ([Double], Double)
 type PixelData = ((Int, Int), RGBA)
 
 data SDLContext = SDLContext {sdlRenderer :: Renderer, sdlTexture :: Texture}
-data AppContext = AppContext {pixelMatrix :: Matrix RGBA, pixelData :: [PixelData], appNetwork :: Network, trainingData :: [Sample], iteration :: Int}
+data AppContext = AppContext {pixelMatrix :: Matrix RGBA, pixelData :: [PixelData], appNetwork :: Network, trainingData :: [Sample], iteration :: Int, sampleProportion :: Double}
 data SharedContext = SharedContext {
                 sharedTexture :: Texture, 
                 learningRate :: TVar Double, 
@@ -100,24 +100,29 @@ training2pix (width, height) (left_arr, right)= ((x, y), color) where
 trainingdata2pixdata :: (Int, Int) -> [Sample] -> [PixelData]
 trainingdata2pixdata ar training_data = fmap (training2pix ar) training_data
 
+pixmat2array :: Matrix RGBA -> [Word8]
+pixmat2array mat = colcat . toList $ mat
+
+
+net2pixmat :: (Int, Int) -> Network -> (Matrix RGBA)
+net2pixmat wh net = output where
+    helper = net2rawmat wh net
+    output = fmap (greyscale2pix . prob2word) helper
+
+net2rawmat :: (Int, Int) -> Network -> (Matrix Double)
+net2rawmat (width, height) network = raw_mat where
+    raw_mat = matrix width height (\(i, j) -> netAt (i, j)) where
+        netAt (i, j) = output where
+            output = (!!0) . prediction . (feedforward [i', j']) $ network
+            i' = (fromIntegral i) / (fromIntegral width) :: Double
+            j' = (fromIntegral j) / (fromIntegral height) :: Double
+
 colcat :: [(a, a, a, a)] -> [a]
 colcat [] = []
 colcat (t:ts) = this ++ that where
     (r, g, b, a) = t
     this = [b, g, r, a]
     that = colcat ts
-
-matToArray :: Matrix RGBA -> [Word8]
-matToArray mat = colcat . toList $ mat
-
-image2Texture :: Matrix RGBA -> Texture -> IO ()
-image2Texture pixel_matrix texture = do
-   (pixels, _) <- lockTexture texture Nothing
-   let raw_data = matToArray pixel_matrix
-   let w8pixels = castPtr pixels :: Ptr Word8
-   pokeArray w8pixels raw_data
-   unlockTexture texture
-   return ()
 
 paintPixel :: (Int, Int) -> RGBA -> Texture -> IO ()
 paintPixel (x, y) (r, g, b, a) texture = do
@@ -149,19 +154,14 @@ paintPixels pixel_matrix texture = do
     paintPixels' pixel_matrix (fromIntegral width) pixels
     unlockTexture texture
 
-net2pixmat :: (Int, Int) -> Network -> (Matrix RGBA)
-net2pixmat wh net = output where
-    helper = net2rawmat wh net
-    output = fmap (greyscale2pix . prob2word) helper
-
-net2rawmat :: (Int, Int) -> Network -> (Matrix Double)
-net2rawmat (width, height) network = raw_mat where
-    raw_mat = matrix width height (\(i, j) -> netAt (i, j)) where
-        netAt (i, j) = output where
-            output = (!!0) . prediction . (feedforward [i', j']) $ network
-            i' = (fromIntegral i) / (fromIntegral width) :: Double
-            j' = (fromIntegral j) / (fromIntegral height) :: Double
-
+pixmat2texture :: Matrix RGBA -> Texture -> IO ()
+pixmat2texture pixel_matrix texture = do
+   (pixels, _) <- lockTexture texture Nothing
+   let raw_data = pixmat2array pixel_matrix
+   let w8pixels = castPtr pixels :: Ptr Word8
+   pokeArray w8pixels raw_data
+   unlockTexture texture
+   return ()
 
 adjust_output :: Activator
 adjust_output = Activator (fmap ((0.5 *) . (0.5 *))) (fmap (0.5 *)) "adjust_output"
@@ -191,56 +191,17 @@ sample p (y:ys) = do
     return (this ++ that)
     
 
-trainNetwork :: Int -> Double -> Network -> [Sample] -> IO Network
-trainNetwork n rate net training_set
+trainNetwork :: Int -> Double -> Double -> Network -> [Sample] -> IO Network
+trainNetwork n rate sample_proportion net training_set
     | n < 0 = return net
     | otherwise = do
-        training_sample <- sample 0.25 training_set
+        training_sample <- sample sample_proportion training_set
         let ratio = 1 / (fromIntegral . length $ training_sample) :: Double
         let zgnet = zerograd net
         let gnet = accumulate_grad mse (fmap (\(x, y) -> (x, [y])) training_sample) zgnet
         let newnet = updateWeights (ratio * rate) gnet
         newnet `deepseq` return () -- Force evaluate
-        trainNetwork (n - 1) rate newnet training_set 
-
-main :: IO ()
-main = do
-  -- Get Image data
-  (image_data, width, height) <- png2mat "/home/lesserfish/Documents/Code/nanoflow/Demos/ImageClone/images/10034.png"
-  let pixel_data = pixmat2pixdata image_data
-  let training_data = pixdata2trainingdata (width, height) pixel_data
-  putStrLn . show . (fmap pix2greyscale) $ image_data
-  putStrLn . show . (fmap pix2greyscale) . (pixdata2pixmat (width, height)) . (trainingdata2pixdata (width, height)) $ training_data
-
-  -- Initialize SDL
-  initializeAll
-  window <- createWindow "Image Replicant" defaultWindow
-  renderer <- createRenderer window (-1) defaultRenderer
-  sharedtexture <- createTexture renderer RGB888 TextureAccessStreaming (V2 (fromIntegral width) (fromIntegral height))
-  sdltexture <- createTexture renderer RGB888 TextureAccessStreaming (V2 (fromIntegral width) (fromIntegral height))
-  paintPixels pixel_data sdltexture
-  
-  let sdlcontext = SDLContext renderer sdltexture
-
-  -- Initialize Neural Network
-
-  network <- inputLayer 2 >>= pushDALayer 9 ((-1.4), 1.4) (lRelu 0.1) >>= pushDALayer 9 ((-1.4), 1.4) (lRelu 0.1) >>= pushDALayer 1 ((-1.4), 1.4) sigmoid
-  let appcontext = AppContext image_data pixel_data network training_data 0
-
-  learning_rate <- newTVarIO 1.0
-  should_exit <- newTVarIO False
-
-  let sharedcontext = SharedContext sharedtexture learning_rate should_exit (width, height)
-  toQuit <- newEmptyMVar
-
-  _ <- forkIO $ (sdlLoop sdlcontext sharedcontext) toQuit
-  _ <- forkIO $ (nnLoop appcontext sharedcontext)
-
-
-  takeMVar toQuit
-  destroyTexture sdltexture
-  destroyTexture sharedtexture
-  destroyWindow window
+        trainNetwork (n - 1) rate sample_proportion newnet training_set 
 
 getError :: Network -> [Sample] -> Double
 getError _ [] = 0
@@ -270,23 +231,24 @@ nnLoop appcontext sharedcontext = do
     let network = appNetwork appcontext
     let training_data = trainingData appcontext
     let it = iteration appcontext
+    let sample_proportion = sampleProportion appcontext
     let (width, height) = textureSize sharedcontext
     let texture = sharedTexture sharedcontext
 
     learning_rate <- atomically $ readTVar (learningRate sharedcontext) :: IO Double
     should_exit <- atomically $ readTVar (shouldExit sharedcontext) :: IO Bool
     -- Train Network for N epochs
-    updated_network <- trainNetwork 1 learning_rate network training_data
+    updated_network <- trainNetwork 1 learning_rate sample_proportion network training_data
     let accuracy = cost network training_data
-    printf "Iteration: %3d - Learning Rate: %.4f - Error: %.5f\n" it learning_rate accuracy
+    if (mod it 50 == 0) then putStrLn $ (printf "Iteration: %3d - Learning Rate: %.4f - Error: %.5f\n" it learning_rate accuracy) else return ()
 
     let pixel_estimate = net2pixmat (width, height) network :: Matrix RGBA
-    image2Texture pixel_estimate texture
+    pixmat2texture pixel_estimate texture
 
-    let matrix_estimate = (fmap (\x -> (printf "%.1f" x))) . (net2rawmat (width, height)) $ updated_network :: Matrix String
-    putStrLn $ if (mod it 10 == 0) then show matrix_estimate else ""
+    --let matrix_estimate = (fmap (\x -> (printf "%.1f" x))) . (net2rawmat (width, height)) $ updated_network :: Matrix String
+    --putStrLn $ if (mod it 10 == 0) then show matrix_estimate else ""
 
-    let appcontext' = AppContext (pixelMatrix appcontext) (pixelData appcontext) updated_network (trainingData appcontext) (it + 1)
+    let appcontext' = AppContext (pixelMatrix appcontext) (pixelData appcontext) updated_network (trainingData appcontext) (it + 1) sample_proportion
     unless should_exit (nnLoop appcontext' sharedcontext)
 
 sdlLoop :: SDLContext -> SharedContext -> MVar () -> IO ()
@@ -326,3 +288,45 @@ sdlLoop sdlcontext sharedcontext toQuit = do
 
   if qPressed then (putMVar toQuit ()) else return ()
   unless qPressed (sdlLoop sdlcontext sharedcontext toQuit)
+
+main :: IO ()
+main = do
+  -- Get Image data
+  --setStdGen (mkStdGen 2396264)
+  (image_data, width, height) <- png2mat "/home/lesserfish/Documents/Code/nanoflow/Demos/ImageClone/images/10036.png"
+  let pixel_data = pixmat2pixdata image_data
+  let training_data = pixdata2trainingdata (width, height) pixel_data
+  putStrLn . show . (fmap pix2greyscale) $ image_data
+  putStrLn . show . (fmap pix2greyscale) . (pixdata2pixmat (width, height)) . (trainingdata2pixdata (width, height)) $ training_data
+
+  -- Initialize SDL
+  initializeAll
+  window <- createWindow "Image Replicant" defaultWindow
+  renderer <- createRenderer window (-1) defaultRenderer
+  sharedtexture <- createTexture renderer RGB888 TextureAccessStreaming (V2 (fromIntegral width) (fromIntegral height))
+  sdltexture <- createTexture renderer RGB888 TextureAccessStreaming (V2 (fromIntegral width) (fromIntegral height))
+  paintPixels pixel_data sdltexture
+  
+  let sdlcontext = SDLContext renderer sdltexture
+
+  -- Initialize Neural Network
+
+  network <- inputLayer 2 >>= pushDALayer 18 ((-1.4), 1.4) (lRelu 0.05) >>= pushDALayer 18 ((-1.4), 1.4) (lRelu 0.05) >>= pushDALayer 1 ((-1.4), 1.4) sigmoid
+  --network <- inputLayer 2 >>= pushDALayer 12 ((-1.4), 1.4) relu >>= pushDALayer 12 ((-1.4), 1.4) relu >>= pushDALayer 1 ((-1.4), 1.4) sigmoid
+  let appcontext = AppContext image_data pixel_data network training_data 0 0.1
+
+  learning_rate <- newTVarIO 1.0
+  should_exit <- newTVarIO False
+
+  let sharedcontext = SharedContext sharedtexture learning_rate should_exit (width, height)
+  toQuit <- newEmptyMVar
+
+  _ <- forkIO $ (sdlLoop sdlcontext sharedcontext) toQuit
+  _ <- forkIO $ (nnLoop appcontext sharedcontext)
+
+
+  takeMVar toQuit
+  destroyTexture sdltexture
+  destroyTexture sharedtexture
+  destroyWindow window
+
