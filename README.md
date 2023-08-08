@@ -27,8 +27,9 @@ For example (see src-exe/Demos/GradientExample.hs)
 
 We also have a feed forward neural network framework implemented. 
 
-For a working demo, please see *src-exe/Demos/NNMoons.hs* and *src-exe/Demos/NNMoonsPlot.hs*
+For a working demo, please see *src-exe/Demos/*
 
 
 ![Figure_1](https://github.com/lesserfish/nanoflow/assets/73536889/3fa685c7-f2f7-4bae-88eb-e40a27c67890)
 ![moon-demo2](https://github.com/lesserfish/nanoflow/assets/73536889/38af635c-1c3b-4508-befd-95ac37ceadba)
+![digit-8](https://github.com/lesserfish/nanoflow/assets/73536889/9de56aaa-5dd7-44fd-8240-4464af869a47)
