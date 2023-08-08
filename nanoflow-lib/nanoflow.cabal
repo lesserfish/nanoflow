@@ -20,7 +20,7 @@ category:           Math
 extra-source-files: CHANGELOG.md
 
 library
-    exposed-modules:  Nanoflow.NN, Nanoflow.Gradient, Nanoflow.Graphics
+    exposed-modules:  Nanoflow.NN, Nanoflow.Gradient
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -32,8 +32,8 @@ library
                       random >= 1.2.1.1,
                       deepseq >= 1.4.8.1,
                       hashable >= 1.4.2.0,
-                      JuicyPixels >= 3.3.8,
-                      matplotlib >=  0.7.7
+                      binary >= 0.8.9.1,
+                      bytestring >= 0.11.4.0
 
     hs-source-dirs:   src
     default-language: Haskell2010

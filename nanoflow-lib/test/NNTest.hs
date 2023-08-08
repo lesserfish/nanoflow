@@ -5,6 +5,17 @@ import Data.Matrix
 
 test :: Spec
 test = do
+    describe "Read Write" $ do
+        it "checks that Saving / Loading works" $ do
+            network <- inputLayer 1 >>= pushDALayer 1 ((-1), 1) htan  -- Generate Network
+            saveNetwork "network.data" network
+            new_network <- loadNetwork "network.data" network
+            let weight1 = (getElem 1 1) . justValue . lweights . ltail $ network
+            let weight2 = (getElem 1 1) . justValue . lweights . ltail $ new_network
+            weight1 `shouldBe` weight2
+            return ()
+        return()
+
     describe "NN Backpropagation" $ do
         it "checks that backpropagation works for a simple expression" $ do
             -- The model is

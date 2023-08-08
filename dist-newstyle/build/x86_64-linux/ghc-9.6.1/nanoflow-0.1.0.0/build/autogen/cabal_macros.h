@@ -10,16 +10,6 @@
   (major1) == 0 && (major2) <  1 || \
   (major1) == 0 && (major2) == 1 && (minor) <= 0)
 #endif /* MIN_VERSION_nanoflow */
-/* package JuicyPixels-3.3.8 */
-#ifndef VERSION_JuicyPixels
-#define VERSION_JuicyPixels "3.3.8"
-#endif /* VERSION_JuicyPixels */
-#ifndef MIN_VERSION_JuicyPixels
-#define MIN_VERSION_JuicyPixels(major1,major2,minor) (\
-  (major1) <  3 || \
-  (major1) == 3 && (major2) <  3 || \
-  (major1) == 3 && (major2) == 3 && (minor) <= 8)
-#endif /* MIN_VERSION_JuicyPixels */
 /* package base-4.18.0.0 */
 #ifndef VERSION_base
 #define VERSION_base "4.18.0.0"
@@ -30,6 +20,26 @@
   (major1) == 4 && (major2) <  18 || \
   (major1) == 4 && (major2) == 18 && (minor) <= 0)
 #endif /* MIN_VERSION_base */
+/* package binary-0.8.9.1 */
+#ifndef VERSION_binary
+#define VERSION_binary "0.8.9.1"
+#endif /* VERSION_binary */
+#ifndef MIN_VERSION_binary
+#define MIN_VERSION_binary(major1,major2,minor) (\
+  (major1) <  0 || \
+  (major1) == 0 && (major2) <  8 || \
+  (major1) == 0 && (major2) == 8 && (minor) <= 9)
+#endif /* MIN_VERSION_binary */
+/* package bytestring-0.11.4.0 */
+#ifndef VERSION_bytestring
+#define VERSION_bytestring "0.11.4.0"
+#endif /* VERSION_bytestring */
+#ifndef MIN_VERSION_bytestring
+#define MIN_VERSION_bytestring(major1,major2,minor) (\
+  (major1) <  0 || \
+  (major1) == 0 && (major2) <  11 || \
+  (major1) == 0 && (major2) == 11 && (minor) <= 4)
+#endif /* MIN_VERSION_bytestring */
 /* package deepseq-1.4.8.1 */
 #ifndef VERSION_deepseq
 #define VERSION_deepseq "1.4.8.1"
@@ -50,16 +60,6 @@
   (major1) == 1 && (major2) <  4 || \
   (major1) == 1 && (major2) == 4 && (minor) <= 2)
 #endif /* MIN_VERSION_hashable */
-/* package matplotlib-0.7.7 */
-#ifndef VERSION_matplotlib
-#define VERSION_matplotlib "0.7.7"
-#endif /* VERSION_matplotlib */
-#ifndef MIN_VERSION_matplotlib
-#define MIN_VERSION_matplotlib(major1,major2,minor) (\
-  (major1) <  0 || \
-  (major1) == 0 && (major2) <  7 || \
-  (major1) == 0 && (major2) == 7 && (minor) <= 7)
-#endif /* MIN_VERSION_matplotlib */
 /* package matrix-0.3.6.1 */
 #ifndef VERSION_matrix
 #define VERSION_matrix "0.3.6.1"

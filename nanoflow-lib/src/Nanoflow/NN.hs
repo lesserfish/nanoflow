@@ -7,10 +7,12 @@ import GHC.Generics (Generic)
 import Control.DeepSeq
 import System.Random (randomRIO)
 import Data.Matrix
+import Data.Binary
+import Data.ByteString.Lazy (ByteString)
 
 data Error = Error {efunc :: [Double] -> [Double] -> Double, egrad :: Matrix Double -> Matrix Double -> Matrix Double}
 data Activator = Activator {afunc :: Matrix Double -> Matrix Double, agrad :: Matrix Double -> Matrix Double, aname :: String} deriving (Generic, NFData)
-data Parameter = Parameter {pvalue :: Double, pgrad :: Double} deriving (Show, Generic, NFData)
+data Parameter = Parameter {pvalue :: Double, pgrad :: Double} deriving (Show, Generic, NFData, Binary)
 data Network = InputLayer  {lnodes :: Matrix Parameter} |
                DenseLayer {lnodes :: Matrix Parameter, lweights :: Matrix Parameter, lbiases :: Matrix Parameter, ltail :: Network} |
                ActivationLayer {lnodes :: Matrix Parameter, lactivator :: Activator, ltail :: Network} deriving (Generic, NFData)
@@ -319,4 +321,50 @@ mse :: Error
 mse = Error fmse dmse
 
 
+newtype RWMatrix a = RWMatrix {justMatrix :: Matrix a} deriving Show
+instance Binary a => Binary (RWMatrix a) where
+    put (RWMatrix mat) = do
+        let nrow = nrows mat :: Int
+        let ncol = ncols mat :: Int
+        let values = toList mat
+        put nrow
+        put ncol
+        _ <- mapM put values
+        return ()
+    get = do
+        nrow <- get :: Get Int
+        ncol <- get :: Get Int
+        values <- replicateM (nrow * ncol) get
+        let mat = fromList nrow ncol values
+        return (RWMatrix mat)
 
+data RWNetwork = RWInputLayer  {rwlnodes :: RWMatrix Parameter} |
+                 RWDenseLayer {rwlnodes :: RWMatrix Parameter, rwlweights :: RWMatrix Parameter, rwlbiases :: RWMatrix Parameter, rwltail :: RWNetwork} |
+                 RWActivationLayer {rwlnodes :: RWMatrix Parameter, rwltail :: RWNetwork} deriving (Generic, Binary)
+
+net2rwnet :: Network -> RWNetwork
+net2rwnet (InputLayer nodes) = RWInputLayer (RWMatrix nodes)
+net2rwnet (DenseLayer nodes weights biases tail) = RWDenseLayer (RWMatrix nodes) (RWMatrix weights) (RWMatrix biases) (net2rwnet tail)
+net2rwnet (ActivationLayer nodes activator tail) = RWActivationLayer (RWMatrix nodes) (net2rwnet tail)
+
+rwnet2net :: Network -> RWNetwork -> Network
+rwnet2net (InputLayer _) (RWInputLayer nodes) = InputLayer (justMatrix nodes)
+rwnet2net (DenseLayer _ _ _ tail) (RWDenseLayer nodes weights biases rwtail) = DenseLayer (justMatrix nodes) (justMatrix weights) (justMatrix biases) (rwnet2net tail rwtail)
+rwnet2net (ActivationLayer _ activator tail) (RWActivationLayer nodes rwtail) = ActivationLayer (justMatrix nodes) activator (rwnet2net tail rwtail)
+rwnet2net _ _ = error "Network and Network data do not match!"
+
+
+encodeNetwork :: Network -> ByteString
+encodeNetwork = encode . net2rwnet
+
+decodeNetwork :: ByteString -> Network -> Network
+decodeNetwork networkdata network = rwnet2net network (decode networkdata :: RWNetwork)
+
+saveNetwork :: FilePath -> Network -> IO ()
+saveNetwork fp network = encodeFile fp (net2rwnet network)
+
+loadNetwork :: FilePath -> Network -> IO Network
+loadNetwork fp network = do
+    rwnetwork <- decodeFile fp :: IO RWNetwork
+    return $ rwnet2net network rwnetwork
+    return $ rwnet2net network rwnetwork
