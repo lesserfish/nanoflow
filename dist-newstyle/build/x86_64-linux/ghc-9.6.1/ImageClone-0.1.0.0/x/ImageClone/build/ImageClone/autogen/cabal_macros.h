@@ -20,6 +20,16 @@
   (major1) == 3 && (major2) <  3 || \
   (major1) == 3 && (major2) == 3 && (minor) <= 8)
 #endif /* MIN_VERSION_JuicyPixels */
+/* package async-2.2.4 */
+#ifndef VERSION_async
+#define VERSION_async "2.2.4"
+#endif /* VERSION_async */
+#ifndef MIN_VERSION_async
+#define MIN_VERSION_async(major1,major2,minor) (\
+  (major1) <  2 || \
+  (major1) == 2 && (major2) <  2 || \
+  (major1) == 2 && (major2) == 2 && (minor) <= 4)
+#endif /* MIN_VERSION_async */
 /* package base-4.18.0.0 */
 #ifndef VERSION_base
 #define VERSION_base "4.18.0.0"
@@ -60,6 +70,16 @@
   (major1) == 0 && (major2) <  1 || \
   (major1) == 0 && (major2) == 1 && (minor) <= 0)
 #endif /* MIN_VERSION_nanoflow */
+/* package optparse-applicative-0.18.1.0 */
+#ifndef VERSION_optparse_applicative
+#define VERSION_optparse_applicative "0.18.1.0"
+#endif /* VERSION_optparse_applicative */
+#ifndef MIN_VERSION_optparse_applicative
+#define MIN_VERSION_optparse_applicative(major1,major2,minor) (\
+  (major1) <  0 || \
+  (major1) == 0 && (major2) <  18 || \
+  (major1) == 0 && (major2) == 18 && (minor) <= 1)
+#endif /* MIN_VERSION_optparse_applicative */
 /* package random-1.2.1.1 */
 #ifndef VERSION_random
 #define VERSION_random "1.2.1.1"

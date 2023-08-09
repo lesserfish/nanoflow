@@ -18,13 +18,15 @@ import Codec.Picture
 import Data.Ord
 import Control.Concurrent
 import Control.Concurrent.STM
+import Control.Concurrent.Async (async, wait)
+import Options.Applicative
 
 type RGBA = (Word8, Word8, Word8, Word8)
 type Sample = ([Double], Double)
 type PixelData = ((Int, Int), RGBA)
 
 data SDLContext = SDLContext {sdlRenderer :: Renderer, sdlTexture :: Texture}
-data AppContext = AppContext {pixelMatrix :: Matrix RGBA, pixelData :: [PixelData], appNetwork :: Network, trainingData :: [Sample], iteration :: Int, sampleProportion :: Double}
+data AppContext = AppContext {pixelMatrix :: Matrix RGBA, pixelData :: [PixelData], appNetwork :: Network, trainingData :: [Sample], toSave :: String, iteration :: Int, sampleProportion :: Double}
 data SharedContext = SharedContext {
                 sharedTexture :: Texture, 
                 learningRate :: TVar Double, 
@@ -106,8 +108,8 @@ pixmat2array mat = colcat . toList $ mat
 
 net2pixmat :: (Int, Int) -> Network -> (Matrix RGBA)
 net2pixmat wh net = output where
-    helper = net2rawmat wh net
-    output = fmap (greyscale2pix . prob2word) helper
+    helper_mat = net2rawmat wh net
+    output = fmap (greyscale2pix . prob2word) helper_mat
 
 net2rawmat :: (Int, Int) -> Network -> (Matrix Double)
 net2rawmat (width, height) network = raw_mat where
@@ -163,9 +165,6 @@ pixmat2texture pixel_matrix texture = do
    unlockTexture texture
    return ()
 
-adjust_output :: Activator
-adjust_output = Activator (fmap ((0.5 *) . (0.5 *))) (fmap (0.5 *)) "adjust_output"
-
 sample2String :: Sample -> String
 sample2String (left, right) = left' ++ " - " ++ right' where
     left' = "[" ++ (printf "%.3f" (left !! 0)) ++ ","++ (printf "%.3f" (left !! 1)) ++ "]" :: String
@@ -190,19 +189,6 @@ sample p (y:ys) = do
     let this = if chance < p then [y] else []
     return (this ++ that)
     
-
-trainNetwork :: Int -> Double -> Double -> Network -> [Sample] -> IO Network
-trainNetwork n rate sample_proportion net training_set
-    | n < 0 = return net
-    | otherwise = do
-        training_sample <- sample sample_proportion training_set
-        let ratio = 1 / (fromIntegral . length $ training_sample) :: Double
-        let zgnet = zerograd net
-        let gnet = accumulate_grad mse (fmap (\(x, y) -> (x, [y])) training_sample) zgnet
-        let newnet = updateWeights (ratio * rate) gnet
-        newnet `deepseq` return () -- Force evaluate
-        trainNetwork (n - 1) rate sample_proportion newnet training_set 
-
 getError :: Network -> [Sample] -> Double
 getError _ [] = 0
 getError network (y:ys) = result where
@@ -226,7 +212,20 @@ nmPress input
     | input == KeycodeP = 10
     | otherwise = 0
 
-nnLoop :: AppContext -> SharedContext -> IO ()
+trainNetwork :: Int -> Double -> Double -> Network -> [Sample] -> IO Network
+trainNetwork n rate sample_proportion net training_set
+    | n < 0 = return net
+    | otherwise = do
+        training_sample <- sample sample_proportion training_set
+        let ratio = 1 / (fromIntegral . length $ training_sample) :: Double
+        let zgnet = zerograd net
+        let gnet = accumulate_grad mse (fmap (\(x, y) -> (x, [y])) training_sample) zgnet
+        let newnet = updateWeights (ratio * rate) gnet
+        newnet `deepseq` return () -- Force evaluate
+        trainNetwork (n - 1) rate sample_proportion newnet training_set 
+
+
+nnLoop :: AppContext -> SharedContext -> (IO Network)
 nnLoop appcontext sharedcontext = do
     let network = appNetwork appcontext
     let training_data = trainingData appcontext
@@ -234,6 +233,7 @@ nnLoop appcontext sharedcontext = do
     let sample_proportion = sampleProportion appcontext
     let (width, height) = textureSize sharedcontext
     let texture = sharedTexture sharedcontext
+    let to_save = toSave appcontext
 
     learning_rate <- atomically $ readTVar (learningRate sharedcontext) :: IO Double
     should_exit <- atomically $ readTVar (shouldExit sharedcontext) :: IO Bool
@@ -248,8 +248,8 @@ nnLoop appcontext sharedcontext = do
     --let matrix_estimate = (fmap (\x -> (printf "%.1f" x))) . (net2rawmat (width, height)) $ updated_network :: Matrix String
     --putStrLn $ if (mod it 10 == 0) then show matrix_estimate else ""
 
-    let appcontext' = AppContext (pixelMatrix appcontext) (pixelData appcontext) updated_network (trainingData appcontext) (it + 1) sample_proportion
-    unless should_exit (nnLoop appcontext' sharedcontext)
+    let appcontext' = AppContext (pixelMatrix appcontext) (pixelData appcontext) updated_network (trainingData appcontext) (to_save) (it + 1) sample_proportion
+    if should_exit then return updated_network else (nnLoop appcontext' sharedcontext)
 
 sdlLoop :: SDLContext -> SharedContext -> MVar () -> IO ()
 sdlLoop sdlcontext sharedcontext toQuit = do
@@ -289,15 +289,57 @@ sdlLoop sdlcontext sharedcontext toQuit = do
   if qPressed then (putMVar toQuit ()) else return ()
   unless qPressed (sdlLoop sdlcontext sharedcontext toQuit)
 
+data Args = Args
+    { seed :: Int
+    , imgpath :: String
+    , inputNetwork :: String
+    , outputNetwork :: String
+    , smplRate :: Double
+    }
+
+args :: Parser Args
+args = Args
+    <$> option auto
+        ( long "seed"
+        <> help "Numeric seed to use as the global seed. 0 to not use one."
+        <> value 0
+        <> metavar "INT" )
+    Options.Applicative.<*> strOption
+        ( long "image"
+        <> short 'i'
+        <> help "Filepath to image" )
+    Options.Applicative.<*> strOption
+        ( long "load"
+        <> short 'l'
+        <> value ""
+        <> help "File path of an existing network that may be loaded. None to create a network from scratch." )
+    Options.Applicative.<*> strOption
+        ( long "save"
+        <> short 's'
+        <> value ""
+        <> help "Filepath to save the trained network. None to not save." )
+    Options.Applicative.<*> option auto          -- Parse a Double
+        ( long "sampleRate"  -- Long option name
+        <> help "Sample Rate for Stochastic Gradient Descent"
+        <> value 0.1          -- Default value
+        <> metavar "DOUBLE"  -- Placeholder in help text
+    )
+
 main :: IO ()
 main = do
+  -- Handle the command line arguments
+  let opts = info (args <**> helper) ( fullDesc <> progDesc "Replicates an image using machine learning." <> header "ImageClone" )
+  arguments <- execParser opts :: IO Args
+
+  -- Apply seed if necessary
+  _ <- if (seed arguments /= 0) then (setStdGen (mkStdGen (seed arguments))) else return ()
+
   -- Get Image data
-  setStdGen (mkStdGen 25)
-  (image_data, width, height) <- png2mat "/home/lesserfish/Documents/Code/nanoflow/Demos/ImageClone/images/10036.png"
+  let image_path = imgpath arguments
+  (image_data, width, height) <- png2mat image_path
   let pixel_data = pixmat2pixdata image_data
   let training_data = pixdata2trainingdata (width, height) pixel_data
   putStrLn . show . (fmap pix2greyscale) $ image_data
-  putStrLn . show . (fmap pix2greyscale) . (pixdata2pixmat (width, height)) . (trainingdata2pixdata (width, height)) $ training_data
 
   -- Initialize SDL
   initializeAll
@@ -311,9 +353,10 @@ main = do
 
   -- Initialize Neural Network
 
-  network <- inputLayer 2 >>= pushDALayer 18 ((-1.4), 1.4) (lRelu 0.05) >>= pushDALayer 18 ((-1.4), 1.4) (lRelu 0.05) >>= pushDALayer 1 ((-1.4), 1.4) sigmoid
-  --network <- inputLayer 2 >>= pushDALayer 12 ((-1.4), 1.4) relu >>= pushDALayer 12 ((-1.4), 1.4) relu >>= pushDALayer 1 ((-1.4), 1.4) sigmoid
-  let appcontext = AppContext image_data pixel_data network training_data 0 0.1
+  n0 <- inputLayer 2 >>= pushDALayer 18 ((-1.4), 1.4) (lRelu 0.05) >>= pushDALayer 18 ((-1.4), 1.4) (lRelu 0.05) >>= pushDALayer 1 ((-1.4), 1.4) sigmoid
+  
+  network <- if ((length . inputNetwork $ arguments) == 0) then (return n0) else (loadNetwork (inputNetwork arguments) n0)
+  let appcontext = AppContext image_data pixel_data network training_data (outputNetwork arguments) 0 (smplRate arguments)
 
   learning_rate <- newTVarIO 1.0
   should_exit <- newTVarIO False
@@ -321,12 +364,13 @@ main = do
   let sharedcontext = SharedContext sharedtexture learning_rate should_exit (width, height)
   toQuit <- newEmptyMVar
 
+  -- Create the processes 
+  asyncResult <- async $ nnLoop appcontext sharedcontext
   _ <- forkIO $ (sdlLoop sdlcontext sharedcontext) toQuit
-  _ <- forkIO $ (nnLoop appcontext sharedcontext)
-
+  output_network <- wait asyncResult
+  _ <- if ((length . outputNetwork $ arguments) == 0) then return () else (saveNetwork (outputNetwork arguments) output_network)
 
   takeMVar toQuit
   destroyTexture sdltexture
   destroyTexture sharedtexture
   destroyWindow window
-
